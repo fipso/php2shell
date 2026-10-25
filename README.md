@@ -268,6 +268,7 @@ HashTable), only chunked multipart and ordinary HTTP requests, and the stock
 `php.ini-production`:
 
 - `display_errors=Off`
+- `output_buffering=4096`
 - `memory_limit=128M`, `post_max_size=8M`
 - official prefork MPM, `MaxRequestWorkers=150`
 - target page only `<?php echo "OK\n"; ?>`
@@ -302,17 +303,24 @@ python3 default_config.py \
 `lab/start-pure-8426.sh` uses Docker when reachable, otherwise Podman; set
 `CONTAINER_ENGINE` or `PODMAN` if the engine is outside `PATH`. It starts
 `php:8.4.26-apache`, copies the image's own `php.ini-production`, mounts the
-trivial page and `/out`, and leaves the official 150-worker MPM untouched.
+trivial page (override with `WEBROOT=/path/to/app`) and `/out`, and leaves the
+official 150-worker MPM untouched.
+
+The raw image with no active `php.ini` has `output_buffering=0` and this chain
+fails at B1 with `no heap pointers in leak window` (reproduced locally).
+`display_errors` is not the deciding setting: `output_buffering=4096` alone is
+enough. Copying the image's stock `php.ini-production` supplies it; do not run
+the raw container and merely add `index.php`.
 
 Do not use a bare `docker run -p 1337:80 php:8.4.26-apache`: that image has no
-PHP page, no `/out`, and no active `php.ini`, so `/index.php` returns 404 and
-the chain cannot start. The launcher adds those pieces while keeping the PHP
-configuration stock. If port 1337 is occupied, remove the raw container or
-choose another port:
+PHP page, no `/out`, and no active `php.ini` (so no `output_buffering=4096`).
+If port 1337 is occupied, remove the raw container or choose another port. Use
+`WEBROOT` to keep your own application:
 
 ```bash
-CONTAINER_ENGINE="sudo docker" PORT=18110 bash lab/start-pure-8426.sh
-python3 default_config.py --port 18110
+CONTAINER_ENGINE="sudo docker" PORT=1337 WEBROOT=/path/to/your/app \
+    bash lab/start-pure-8426.sh
+python3 default_config.py --port 1337
 ```
 
 This chain is calibrated for **8.4.26 only**. It is not the 8.5.11 profile,

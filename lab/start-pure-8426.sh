@@ -19,6 +19,7 @@ IMAGE=${IMAGE:-php:8.4.26-apache}
 NAME=${NAME:-p2s-pure-8426}
 PORT=${PORT:-18110}
 OUT=${OUT:-$REPO/out/pure-8426}
+WEBROOT=${WEBROOT:-$HERE/pure/www}
 
 engine=()
 if [ -n "${CONTAINER_ENGINE:-}" ]; then
@@ -40,8 +41,8 @@ if [ "${1:-}" = "--down" ]; then
     exit 0
 fi
 
-if [ ! -f "$HERE/pure/www/index.php" ]; then
-    echo "missing $HERE/pure/www/index.php" >&2
+if [ ! -f "$WEBROOT/index.php" ]; then
+    echo "missing $WEBROOT/index.php" >&2
     exit 1
 fi
 
@@ -51,7 +52,7 @@ chmod 0777 "$OUT" 2>/dev/null || true
 
 "${engine[@]}" run -d --name "$NAME" \
     -p "127.0.0.1:${PORT}:80" \
-    -v "$HERE/pure/www:/var/www/html:ro" \
+    -v "$WEBROOT:/var/www/html:ro" \
     -v "$OUT:/out" \
     "$IMAGE" /bin/sh -c \
     'cp /usr/local/etc/php/php.ini-production /usr/local/etc/php/php.ini;
