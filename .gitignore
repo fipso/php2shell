@@ -22,3 +22,9 @@ lab/*.log
 # Crash artifacts
 core
 core.*
+
+# Persistent SAPI lab runtime/proofs
+lab/fpm/runtime/
+lab/fpm/webroot/out/
+lab/*.pid
+lab/fpm/*.pid

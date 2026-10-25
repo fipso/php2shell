@@ -300,7 +300,7 @@ def match_profiles(fingerprint: dict[str, Any],
         if "apache" in sapi_hint:
             score += 8
             reasons.append("Apache SAPI hint")
-        elif sapi_hint in ("nginx", "fpm", "cgi", "cli"):
+        elif sapi_hint in ("nginx", "fpm", "cgi", "cli", "cli-server"):
             score -= 40
             compatible = False
             warnings.append(f"SAPI hint {sapi_hint} is not mod_php")
@@ -391,7 +391,7 @@ def priority_candidates(fingerprint: dict[str, Any],
     target_arch = normalize_arch(arch or fp.get("arch"))
     target_distro = (fp.get("distro") or "").lower()
     sapi_hint = (fp.get("sapi_hint") or "").lower()
-    if sapi_hint in ("nginx", "litespeed", "iis"):
+    if sapi_hint in ("nginx", "litespeed", "iis", "cli-server"):
         return []
     if fp.get("session_upload_progress") is False:
         return []

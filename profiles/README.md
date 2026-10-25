@@ -61,3 +61,7 @@ stored. `measured` examples in the public profiles are not runtime constants.
 
 Do not copy an offset from one distro/build to another just because the PHP
 version matches.
+
+Persistent-SAPI (nginx/FPM and CLI-server) profiles live in
+`profiles/fpm/`; see its README and `fpm_exploit.py`. They are kept separate
+from the Apache mod_php catalog.

