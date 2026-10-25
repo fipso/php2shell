@@ -15,7 +15,7 @@ php-install-nofilter/
 lab/libphp-*.so
 
 # Lab runtime state
-lab/httpd.pid
+lab/httpd*.pid
 lab/sessions/
 lab/*.log
 

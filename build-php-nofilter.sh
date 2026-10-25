@@ -22,6 +22,7 @@ CFLAGS="-O2 -g -fno-omit-frame-pointer -fno-stack-protector" \
 
 make clean
 make -j"$(nproc)"
-mkdir -p "$PREFIX/modules" "$PREFIX/lib" "$PREFIX/bin"
+mkdir -p "$PREFIX/modules" "$PREFIX/lib" "$PREFIX/bin" ../lab
 cp -v libs/libphp.so "$PREFIX/modules/libphp.so"
+cp -v libs/libphp.so ../lab/libphp-nts-nofilter.so
 cp -v sapi/cli/php "$PREFIX/bin/php"
