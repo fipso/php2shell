@@ -35,15 +35,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-## 9bie/php2shell-bypass-aslr-exp (external, not redistributed)
-
-The optional stock-config adapter in `default_config.py` operates on a
-user-supplied checkout of:
-
-  https://github.com/9bie/php2shell-bypass-aslr-exp
-
-That repository has no license file, so its code is not copied into this
-repository. The adapter downloads nothing and only runs a temporary patched
-copy of the checkout the operator provides. The stock-config chain and its
-validation results are attributed to that research.
