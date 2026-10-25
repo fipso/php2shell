@@ -1,0 +1,504 @@
+{
+  "schema": 1,
+  "profiles": [
+    {
+      "name": "php-8.5.11-bookworm-amd64",
+      "php_version": "8.5.11",
+      "branch": "8.5",
+      "fixed_in": "8.5.12",
+      "arch": "x86_64",
+      "distro": "debian",
+      "image": "php:8.5.11-apache",
+      "sapi": "apache2handler",
+      "verified": true,
+      "rce": true,
+      "libphp": {
+        "zif_system": "0x5996e0",
+        "zval_ptr_dtor": "0x7b47a0",
+        "htdata": "0x690d8"
+      },
+      "stages": {
+        "stage1_n": 841,
+        "stage1_forge_len": 63,
+        "stage2_t": 406,
+        "stage2_v": 16,
+        "stage3_pads": [[31, 31], [31, 31], [31, 31], [31, 31], [31, 31], [31, 31]],
+        "stage3_carrier": true
+      },
+      "oom_mb": 12,
+      "oom_margin_mb": 12,
+      "config": {
+        "memory_limit": 8388608,
+        "memory_limit_tested_mb": [8],
+        "post_max_size": 67108864,
+        "max_input_vars": 1000,
+        "display_errors": "On",
+        "session_upload_progress": "On",
+        "session_use_only_cookies": 1,
+        "session_use_strict_mode": 0,
+        "workers": 1
+      },
+      "status": "RCE verified at 8M (uid=33/www-data) on the official image",
+      "source": "https://github.com/devploit/php2shell/blob/main/profiles/8.5.11-bookworm-amd64.json"
+    },
+    {
+      "name": "php-8.5.11-bookworm-aarch64",
+      "php_version": "8.5.11",
+      "branch": "8.5",
+      "fixed_in": "8.5.12",
+      "arch": "aarch64",
+      "distro": "debian",
+      "image": "php:8.5.11-apache",
+      "sapi": "apache2handler",
+      "verified": true,
+      "rce": true,
+      "libphp": {
+        "zif_system": "0x5314f0",
+        "zval_ptr_dtor": "0x761b80",
+        "htdata": "0x690d8"
+      },
+      "stages": {
+        "stage1_n": 841,
+        "stage1_forge_len": 63,
+        "stage2_t": 406,
+        "stage2_v": 16,
+        "stage3_pads": [[31, 31], [31, 31], [31, 31], [31, 31], [31, 31], [31, 31]],
+        "stage3_carrier": true
+      },
+      "oom_mb": 12,
+      "oom_margin_mb": 12,
+      "config": {
+        "memory_limit": 8388608,
+        "memory_limit_tested_mb": [8],
+        "post_max_size": 67108864,
+        "max_input_vars": 1000,
+        "display_errors": "On",
+        "session_upload_progress": "On",
+        "session_use_only_cookies": 1,
+        "session_use_strict_mode": 0,
+        "workers": 1
+      },
+      "status": "RCE verified at 8M",
+      "source": "https://github.com/devploit/php2shell/blob/main/profiles/8.5.11-bookworm-aarch64.json"
+    },
+    {
+      "name": "php-8.4.26-bookworm-amd64",
+      "php_version": "8.4.26",
+      "branch": "8.4",
+      "fixed_in": "8.4.27",
+      "arch": "x86_64",
+      "distro": "debian",
+      "image": "php:8.4.26-apache",
+      "sapi": "apache2handler",
+      "verified": true,
+      "rce": true,
+      "libphp": {
+        "zif_system": "0x465370",
+        "zval_ptr_dtor": "0x65eb60",
+        "htdata": "0x690d8"
+      },
+      "stages": {
+        "stage1_n": 841,
+        "stage1_forge_len": 79,
+        "stage2_t": 406,
+        "stage2_v": 16,
+        "stage3_pads": [[31, 31], [31, 31], [31, 31], [31, 31], [31, 31], [31, 31]],
+        "stage3_carrier": true
+      },
+      "oom_mb": 12,
+      "oom_margin_mb": 12,
+      "config": {
+        "memory_limit": 8388608,
+        "memory_limit_tested_mb": [8, 128],
+        "post_max_size": 67108864,
+        "max_input_vars": 1000,
+        "display_errors": "On",
+        "session_upload_progress": "On",
+        "session_use_only_cookies": 1,
+        "session_use_strict_mode": 0,
+        "workers": 1
+      },
+      "status": "RCE verified at 8M and 128M",
+      "source": "https://github.com/devploit/php2shell/blob/main/profiles/8.4.26-bookworm-amd64.json"
+    },
+    {
+      "name": "php-8.5.10-bookworm-aarch64",
+      "php_version": "8.5.10",
+      "branch": "8.5",
+      "fixed_in": "8.5.12",
+      "arch": "aarch64",
+      "distro": "debian",
+      "image": "php:8.5.10-apache",
+      "sapi": "apache2handler",
+      "verified": true,
+      "rce": true,
+      "libphp": {
+        "zif_system": "0x52e130",
+        "zval_ptr_dtor": "0x75d360",
+        "htdata": "0x690d8"
+      },
+      "stages": {
+        "stage1_n": 841,
+        "stage1_forge_len": 63,
+        "stage2_t": 406,
+        "stage2_v": 16,
+        "stage3_pads": [[31, 31], [31, 31], [31, 31], [31, 31], [31, 31], [31, 31]],
+        "stage3_carrier": true
+      },
+      "oom_mb": 12,
+      "oom_margin_mb": 12,
+      "config": {
+        "memory_limit": 8388608,
+        "memory_limit_tested_mb": [8],
+        "post_max_size": 67108864,
+        "max_input_vars": 1000,
+        "display_errors": "On",
+        "session_upload_progress": "On",
+        "session_use_only_cookies": 1,
+        "session_use_strict_mode": 0,
+        "workers": 1
+      },
+      "status": "RCE verified at 8M",
+      "source": "https://github.com/devploit/php2shell/blob/main/profiles/8.5.10-bookworm-aarch64.json"
+    },
+    {
+      "name": "php-8.4.25-bookworm-aarch64",
+      "php_version": "8.4.25",
+      "branch": "8.4",
+      "fixed_in": "8.4.27",
+      "arch": "aarch64",
+      "distro": "debian",
+      "image": "php:8.4.25-apache",
+      "sapi": "apache2handler",
+      "verified": true,
+      "rce": true,
+      "libphp": {
+        "zif_system": "0x42fa30",
+        "zval_ptr_dtor": "0x637ae0",
+        "htdata": "0x690d8"
+      },
+      "stages": {
+        "stage1_n": 841,
+        "stage1_forge_len": 63,
+        "stage2_t": 406,
+        "stage2_v": 16,
+        "stage3_pads": [[31, 31], [31, 31], [31, 31], [31, 31], [31, 31], [31, 31]],
+        "stage3_carrier": true
+      },
+      "oom_mb": 12,
+      "oom_margin_mb": 12,
+      "config": {
+        "memory_limit": 8388608,
+        "memory_limit_tested_mb": [8],
+        "post_max_size": 67108864,
+        "max_input_vars": 1000,
+        "display_errors": "On",
+        "session_upload_progress": "On",
+        "session_use_only_cookies": 1,
+        "session_use_strict_mode": 0,
+        "workers": 1
+      },
+      "status": "RCE verified; stage 3 probabilistic, use retries",
+      "source": "https://github.com/devploit/php2shell/blob/main/profiles/8.4.25-bookworm-aarch64.json"
+    },
+    {
+      "name": "php-8.3.35-bookworm-aarch64",
+      "php_version": "8.3.35",
+      "branch": "8.3",
+      "fixed_in": "8.3.36",
+      "arch": "aarch64",
+      "distro": "debian",
+      "image": "php:8.3.35-apache",
+      "sapi": "apache2handler",
+      "verified": false,
+      "rce": false,
+      "libphp": {
+        "zif_system": "0x377428",
+        "zval_ptr_dtor": "0x46fcc0",
+        "htdata": null
+      },
+      "stages": {
+        "stage1_n": 841,
+        "stage1_forge_len": 63,
+        "stage2_t": 406,
+        "stage2_v": 16,
+        "stage3_pads": null,
+        "stage3_carrier": null
+      },
+      "oom_mb": 12,
+      "oom_margin_mb": 12,
+      "config": {
+        "memory_limit": 8388608,
+        "memory_limit_tested_mb": [8],
+        "post_max_size": 67108864,
+        "max_input_vars": 1000,
+        "display_errors": "On",
+        "session_upload_progress": "On",
+        "session_use_only_cookies": 1,
+        "session_use_strict_mode": 0,
+        "workers": 1
+      },
+      "status": "leaks calibrated; stage 3 not verified",
+      "source": "https://github.com/devploit/php2shell/blob/main/profiles/8.3.35-bookworm-aarch64.json"
+    },
+    {
+      "name": "php-8.3.33-wordpress-mod_php",
+      "php_version": "8.3.33",
+      "branch": "8.3",
+      "fixed_in": "8.3.36",
+      "arch": "aarch64",
+      "distro": "debian",
+      "image": "wordpress:7.1.1-apache",
+      "sapi": "apache2handler",
+      "verified": false,
+      "rce": false,
+      "libphp": {
+        "zif_system": "0x377248",
+        "zval_ptr_dtor": "0x4737e0",
+        "htdata": null
+      },
+      "stages": {
+        "stage1_n": 815,
+        "stage1_forge_len": 63,
+        "stage2_t": 406,
+        "stage2_v": 16,
+        "stage3_pads": null,
+        "stage3_carrier": null
+      },
+      "oom_mb": 12,
+      "oom_margin_mb": 12,
+      "config": {
+        "memory_limit": 8388608,
+        "memory_limit_tested_mb": [8],
+        "post_max_size": 67108864,
+        "max_input_vars": 1000,
+        "display_errors": "On",
+        "session_upload_progress": "On",
+        "session_use_only_cookies": 1,
+        "session_use_strict_mode": 0,
+        "workers": 1
+      },
+      "status": "stage 1/2 reproduced; stage 3 not calibrated",
+      "source": "https://github.com/devploit/php2shell/blob/main/profiles/8.3.33-wordpress.json"
+    },
+    {
+      "name": "php-8.5.0-bookworm-aarch64",
+      "php_version": "8.5.0",
+      "branch": "8.5",
+      "fixed_in": "8.5.12",
+      "arch": "aarch64",
+      "distro": "debian",
+      "image": "php:8.5.0-apache",
+      "sapi": "apache2handler",
+      "verified": false,
+      "rce": false,
+      "libphp": {
+        "zif_system": "0x503510",
+        "zval_ptr_dtor": "0x731d80",
+        "htdata": null
+      },
+      "stages": {
+        "stage1_n": 841,
+        "stage1_forge_len": 63,
+        "stage2_t": 406,
+        "stage2_v": 16,
+        "stage3_pads": null,
+        "stage3_carrier": null
+      },
+      "oom_mb": 12,
+      "oom_margin_mb": 12,
+      "config": {
+        "memory_limit": 8388608,
+        "memory_limit_tested_mb": [8],
+        "post_max_size": 67108864,
+        "max_input_vars": 1000,
+        "display_errors": "On",
+        "session_upload_progress": "On",
+        "session_use_only_cookies": 1,
+        "session_use_strict_mode": 0,
+        "workers": 1
+      },
+      "status": "leaks calibrated; stage 3 not verified",
+      "source": "https://github.com/devploit/php2shell/blob/main/profiles/8.5.0-bookworm.json"
+    },
+    {
+      "name": "php-8.3.0-bookworm-aarch64",
+      "php_version": "8.3.0",
+      "branch": "8.3",
+      "fixed_in": "8.3.36",
+      "arch": "aarch64",
+      "distro": "debian",
+      "image": "php:8.3.0-apache",
+      "sapi": "apache2handler",
+      "verified": false,
+      "rce": false,
+      "libphp": {
+        "zif_system": "0x3771f0",
+        "zval_ptr_dtor": "0x467cf0",
+        "htdata": null
+      },
+      "stages": {
+        "stage1_n": 0,
+        "stage1_forge_len": 0,
+        "stage2_t": 406,
+        "stage2_v": 16,
+        "stage3_pads": null,
+        "stage3_carrier": null
+      },
+      "oom_mb": 12,
+      "oom_margin_mb": 12,
+      "config": {
+        "memory_limit": 8388608,
+        "memory_limit_tested_mb": [8],
+        "post_max_size": 67108864,
+        "max_input_vars": 1000,
+        "display_errors": "unknown",
+        "session_upload_progress": "On",
+        "session_use_only_cookies": 1,
+        "session_use_strict_mode": 0,
+        "workers": 1
+      },
+      "status": "calibration failed: heap/libphp leak not reproduced",
+      "source": "https://github.com/devploit/php2shell/blob/main/profiles/8.3.0-bookworm.json"
+    },
+    {
+      "name": "php-8.2.34-bookworm-aarch64",
+      "php_version": "8.2.34",
+      "branch": "8.2",
+      "fixed_in": "8.2.35",
+      "arch": "aarch64",
+      "distro": "debian",
+      "image": "php:8.2.34-apache",
+      "sapi": "apache2handler",
+      "verified": false,
+      "rce": false,
+      "libphp": {
+        "zif_system": "0x36ff48",
+        "zval_ptr_dtor": "0x4606c0",
+        "htdata": null
+      },
+      "stages": {
+        "stage1_n": 0,
+        "stage1_forge_len": 0,
+        "stage2_t": 406,
+        "stage2_v": 16,
+        "stage3_pads": null,
+        "stage3_carrier": null
+      },
+      "oom_mb": 12,
+      "oom_margin_mb": 12,
+      "config": {
+        "memory_limit": 8388608,
+        "memory_limit_tested_mb": [8],
+        "post_max_size": 67108864,
+        "max_input_vars": 1000,
+        "display_errors": "unknown",
+        "session_upload_progress": "On",
+        "session_use_only_cookies": 1,
+        "session_use_strict_mode": 0,
+        "workers": 1
+      },
+      "status": "calibration failed: stage 1 heap leak not reproduced",
+      "source": "https://github.com/devploit/php2shell/blob/main/profiles/8.2.34-bookworm-aarch64.json"
+    },
+    {
+      "name": "php-8.1.34-bookworm-aarch64",
+      "php_version": "8.1.34",
+      "branch": "8.1",
+      "fixed_in": null,
+      "arch": "aarch64",
+      "distro": "debian",
+      "image": "php:8.1.34-apache",
+      "sapi": "apache2handler",
+      "verified": false,
+      "rce": false,
+      "libphp": {
+        "zif_system": "0x341e08",
+        "zval_ptr_dtor": "0x42e7a0",
+        "htdata": null
+      },
+      "stages": {},
+      "oom_mb": 12,
+      "oom_margin_mb": 12,
+      "config": {
+        "memory_limit": 8388608,
+        "memory_limit_tested_mb": [],
+        "post_max_size": 67108864,
+        "max_input_vars": 1000,
+        "display_errors": "On",
+        "session_upload_progress": "On",
+        "session_use_only_cookies": 1,
+        "session_use_strict_mode": 0,
+        "workers": 1
+      },
+      "status": "offsets only; heap not calibrated (EOL branch)",
+      "source": "https://github.com/devploit/php2shell/blob/main/profiles/8.1.34-bookworm-aarch64.json"
+    },
+    {
+      "name": "php-8.0.30-bookworm-aarch64",
+      "php_version": "8.0.30",
+      "branch": "8.0",
+      "fixed_in": null,
+      "arch": "aarch64",
+      "distro": "debian",
+      "image": "php:8.0.30-apache",
+      "sapi": "apache2handler",
+      "verified": false,
+      "rce": false,
+      "libphp": {
+        "zif_system": "0x31ef70",
+        "zval_ptr_dtor": "0x40ddb0",
+        "htdata": null
+      },
+      "stages": {},
+      "oom_mb": 12,
+      "oom_margin_mb": 12,
+      "config": {
+        "memory_limit": 8388608,
+        "memory_limit_tested_mb": [],
+        "post_max_size": 67108864,
+        "max_input_vars": 1000,
+        "display_errors": "On",
+        "session_upload_progress": "On",
+        "session_use_only_cookies": 1,
+        "session_use_strict_mode": 0,
+        "workers": 1
+      },
+      "status": "offsets only; heap not calibrated (EOL branch)",
+      "source": "https://github.com/devploit/php2shell/blob/main/profiles/8.0.30-bookworm-aarch64.json"
+    },
+    {
+      "name": "php-7.4.33-bookworm-aarch64",
+      "php_version": "7.4.33",
+      "branch": "7.4",
+      "fixed_in": null,
+      "arch": "aarch64",
+      "distro": "debian",
+      "image": "php:7.4.33-apache",
+      "sapi": "apache2handler",
+      "verified": false,
+      "rce": false,
+      "libphp": {
+        "zif_system": "0x309640",
+        "zval_ptr_dtor": "0x3f6024",
+        "htdata": null
+      },
+      "stages": {},
+      "oom_mb": 12,
+      "oom_margin_mb": 12,
+      "config": {
+        "memory_limit": 8388608,
+        "memory_limit_tested_mb": [],
+        "post_max_size": 67108864,
+        "max_input_vars": 1000,
+        "display_errors": "On",
+        "session_upload_progress": "On",
+        "session_use_only_cookies": 1,
+        "session_use_strict_mode": 0,
+        "workers": 1
+      },
+      "status": "offsets only; heap not calibrated (EOL branch)",
+      "source": "https://github.com/devploit/php2shell/blob/main/profiles/7.4.33-bookworm-aarch64.json"
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PHP2Shell build profile",
+  "description": "Per-build offsets, heap calibration and verified RCE status. Offsets and calibration are specific to an exact libphp build and target configuration.",
+  "type": "object",
+  "required": ["name", "php_version", "arch", "sapi", "libphp", "stages", "config"],
+  "properties": {
+    "name": {"type": "string"},
+    "php_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "branch": {"type": "string"},
+    "fixed_in": {"type": ["string", "null"]},
+    "arch": {"enum": ["x86_64", "aarch64"]},
+    "distro": {"type": "string"},
+    "image": {"type": "string"},
+    "sapi": {"enum": ["apache2handler"]},
+    "verified": {"type": "boolean"},
+    "rce": {"type": "boolean"},
+    "libphp": {
+      "type": "object",
+      "required": ["zif_system", "zval_ptr_dtor"],
+      "properties": {
+        "zif_system": {"type": "string", "pattern": "^0x[0-9a-fA-F]+$"},
+        "zval_ptr_dtor": {"type": "string", "pattern": "^0x[0-9a-fA-F]+$"},
+        "htdata": {"type": ["string", "null"]}
+      }
+    },
+    "stages": {
+      "type": "object",
+      "properties": {
+        "stage1_n": {"type": "integer", "minimum": 0},
+        "stage1_forge_len": {"type": "integer", "minimum": 0},
+        "stage2_t": {"type": "integer", "minimum": 0},
+        "stage2_v": {"type": "integer", "minimum": 0},
+        "stage3_pads": {"type": ["array", "null"]},
+        "stage3_carrier": {"type": ["boolean", "null"]}
+      }
+    },
+    "oom_mb": {"type": "integer", "minimum": 1},
+    "oom_margin_mb": {"type": "integer", "minimum": 1},
+    "config": {
+      "type": "object",
+      "properties": {
+        "memory_limit": {"type": "integer"},
+        "memory_limit_tested_mb": {"type": "array", "items": {"type": "integer"}},
+        "post_max_size": {"type": "integer"},
+        "max_input_vars": {"type": "integer"},
+        "display_errors": {"type": "string"},
+        "session_upload_progress": {"type": "string"},
+        "session_use_only_cookies": {"type": "integer"},
+        "session_use_strict_mode": {"type": "integer"},
+        "workers": {"type": "integer", "minimum": 1}
+      }
+    },
+    "status": {"type": "string"},
+    "source": {"type": "string"}
+  }
+}

