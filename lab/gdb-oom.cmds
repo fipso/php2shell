@@ -1,0 +1,44 @@
+set pagination off
+set confirm off
+set height 0
+set breakpoint pending on
+set print elements 64
+set logging file /home/fipso/code/php2shell/lab/gdb-oom.log
+set logging enabled on
+set logging redirect on
+
+break php_register_variable_ex
+commands
+silent
+if (long)strlen(var_name) > 100000
+  printf "REGISTER track=%p ztype=%d ht=%p len=%ld\n", track_vars_array, track_vars_array->u1.v.type, track_vars_array->value.arr, (long)strlen(var_name)
+  if track_vars_array->u1.v.type == 7
+    printf "  used=%u elems=%u flags=%x data=%p dtor=%p\n", track_vars_array->value.arr->nNumUsed, track_vars_array->value.arr->nNumOfElements, track_vars_array->value.arr->u.flags, track_vars_array->value.arr->arData, track_vars_array->value.arr->pDestructor
+  end
+end
+continue
+end
+
+break zend_array_destroy
+commands
+silent
+if ht->nNumUsed == 2 && ht->nNumOfElements == 2
+  printf "DESTROY ht=%p used=%u elems=%u flags=%x data=%p dtor=%p\n", ht, ht->nNumUsed, ht->nNumOfElements, ht->u.flags, ht->arData, ht->pDestructor
+  printf "BUCKET0:\n"
+  x/32bx (char*)ht->arData
+  printf "BUCKET1:\n"
+  x/32bx (char*)ht->arData + 32
+end
+continue
+end
+
+break zend_mm_safe_error
+commands
+silent
+printf "OOM_HIT format=%s\n", format
+printf "SYSTEM_ADDR=%p\n", (void*)system
+bt 12
+continue
+end
+
+run

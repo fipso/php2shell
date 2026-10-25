@@ -1,0 +1,24 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+.venv/
+
+# PHP release tarball and extracted/build tree
+php-8.5.11/
+php-8.5.11.tar.xz
+
+# PHP install prefixes
+php-install/
+php-install-nofilter/
+
+# Built Apache modules; rebuild with build-php-*.sh
+lab/libphp-*.so
+
+# Lab runtime state
+lab/httpd.pid
+lab/sessions/
+lab/*.log
+
+# Crash artifacts
+core
+core.*
