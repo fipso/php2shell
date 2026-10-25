@@ -295,3 +295,24 @@ the PHP configuration. The x86_64 path is verified. The aarch64 offsets are
 present but have not been verified on real ARM hardware. Concurrent-load
 behavior is still under test; the current pinning assumes requests are not
 competing for the final free worker.
+
+### Supported production 8.4.x builds (x86-64)
+
+The production chain was tested against official Apache images with the stock
+`php.ini-production` and a single worker:
+
+| PHP | `zif_system` | `zval_ptr_dtor` | Result |
+|---|---:|---:|---|
+| 8.4.19 | `0x4472f0` | `0x63efe0` | RCE |
+| 8.4.20 | `0x447530` | `0x63f9e0` | RCE |
+| 8.4.21 | `0x4623b0` | `0x65afe0` | RCE |
+| 8.4.22 | `0x462d30` | `0x65b9e0` | RCE |
+| 8.4.23 | `0x462d70` | `0x65b9a0` | RCE |
+| 8.4.24 | `0x464530` | `0x65d1e0` | RCE |
+| 8.4.25 | `0x464c70` | `0x65dc60` | RCE |
+| 8.4.26 | `0x465370` | `0x65eb60` | RCE |
+
+Use `--version 8.4.25` (or `--dtor/--zif`) with `production_exploit.py`.
+150-worker verification was repeated on 8.4.19 and 8.4.26. 8.4.18 and earlier,
+8.5.10/8.5.11, 8.3.35 and 8.2.34 did not produce a leak with this geometry.
+8.4.27 is the first fixed 8.4 release and fails as expected.
