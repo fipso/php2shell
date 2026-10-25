@@ -194,7 +194,19 @@ def parse_passive(resp: ProbeResponse) -> dict[str, Any]:
     m = re.search(r"\bsapi=([A-Za-z0-9_-]+)", body)
     if m:
         body_sapi = m.group(1).lower()
-    if "development server" in server_lower or body_sapi == "cli-server":
+    if body_sapi == "apache2handler":
+        sapi_hint = "apache"
+        sapi = "apache2handler"
+        sapi_detail = "application reports Apache mod_php"
+    elif body_sapi == "fpm-fcgi":
+        sapi_hint = "fpm"
+        sapi = "fpm-fcgi"
+        sapi_detail = "application reports PHP-FPM FastCGI"
+    elif body_sapi == "cli-server":
+        sapi_hint = "cli-server"
+        sapi = "cli-server"
+        sapi_detail = "application reports PHP built-in CLI server"
+    elif "development server" in server_lower or body_sapi == "cli-server":
         sapi_hint = "cli-server"
         sapi = "cli-server"
         sapi_detail = "PHP built-in CLI server; single persistent worker"
@@ -518,7 +530,8 @@ def main() -> int:
     fpm_matches: list[dict[str, Any]] = []
     if persistent:
         fpm_matches = match_fpm_profiles(
-            fp, sapi=fp.get("sapi"), arch=arch, limit=args.limit)
+            fp, sapi=fp.get("sapi"), arch=arch, limit=args.limit,
+            local=bool(args.local_bases or args.pid))
 
     if args.active or args.oom_probe:
         fp["session_probe"] = probe_session_upload(client, None)
@@ -586,7 +599,9 @@ def main() -> int:
             else:
                 runnable = [p for p in fpm_matches if p.get("compatible")]
                 if not runnable:
-                    print("[-] no compatible verified persistent-SAPI profile",
+                    print("[-] no automatically trusted persistent-SAPI profile; "
+                          "FPM/CLI profiles are build-specific. Pass --profile "
+                          "for the exact image/build, or calibrate a new one.",
                           file=sys.stderr)
                     return 1
                 chosen = runnable[0]

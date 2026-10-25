@@ -62,5 +62,6 @@
     "workers": 2
   },
   "status": "RCE verified in the nginx+FPM lab: post-RINIT OOM leaves BG(unserialize) stale (level=1), the pre-RINIT rfc1867 session_start of a follow-up multipart reuses the freed struct, and two 4 KB pads + a 16 KB big field cover d at 0x7f000. The HTTP stale-string leak recovers chunk/PIE with the 8.4.25 PIE offset. The command runs and the consumer worker aborts afterwards; FPM respawns it.",
-  "oom_mb": 4
+  "oom_mb": 4,
+  "build_specific": true
 }

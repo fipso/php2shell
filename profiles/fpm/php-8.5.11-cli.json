@@ -130,5 +130,8 @@
       "unserialize_level": 880
     }
   },
-  "status": "RCE verified on the local NixOS PHP 8.5.11 built-in server lab with maps/chunk/pie bases: uid=1000(fipso); worker dies after the command and the supervisor restarts it. HTTP leak geometry not calibrated."
+  "status": "RCE verified on the local NixOS PHP 8.5.11 built-in server lab with maps/chunk/pie bases: uid=1000(fipso); worker dies after the command and the supervisor restarts it. HTTP leak geometry not calibrated.",
+  "local_only": true,
+  "build": "nixos-nixpkgs-php85-8.5.11",
+  "build_specific": true
 }

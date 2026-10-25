@@ -252,6 +252,8 @@ def match_profiles(fingerprint: dict[str, Any],
     target_php = fp.get("php_version")
     target_arch = normalize_arch(arch or fp.get("arch"))
     target_distro = (fp.get("distro") or "").lower()
+    if target_distro == "unknown":
+        target_distro = ""
     upload = fp.get("session_upload_progress")
     mem = fp.get("memory_limit")
     workers = fp.get("workers")
@@ -390,6 +392,8 @@ def priority_candidates(fingerprint: dict[str, Any],
     target_php = fp.get("php_version")
     target_arch = normalize_arch(arch or fp.get("arch"))
     target_distro = (fp.get("distro") or "").lower()
+    if target_distro == "unknown":
+        target_distro = ""
     sapi_hint = (fp.get("sapi_hint") or "").lower()
     if sapi_hint in ("nginx", "litespeed", "iis", "cli-server"):
         return []

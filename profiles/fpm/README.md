@@ -15,3 +15,9 @@ uncalibrated; use `--local-bases` only on a disposable local lab, or supply
 A verified persistent profile needs `sapi`, `libphp.zif_system`,
 `fpm.basic_globals`, `fpm.reclaim_pads`, `fpm.reclaim_size`, and at least one
 `fpm.no_oracle.candidates` pair. `rce` and `verified` must both be true.
+
+All persistent profiles are marked `build_specific`. Automatic selection uses
+them only when the exact image/build is known; pass `--profile` to force one
+after confirming the symbols and heap geometry. The local NixOS 8.5.11 FPM and
+CLI profiles are additionally marked `local_only` and must always be selected
+explicitly.

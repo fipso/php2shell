@@ -100,7 +100,8 @@ def requirements(profile: dict[str, Any]) -> tuple[bool, list[str]]:
 def match_fpm_profiles(fingerprint: dict[str, Any],
                        sapi: str | None = None,
                        arch: str | None = None,
-                       limit: int = 8) -> list[dict[str, Any]]:
+                       limit: int = 8,
+                       local: bool = False) -> list[dict[str, Any]]:
     target_php = fingerprint.get("php_version")
     target_sapi = sapi or fingerprint.get("sapi") or ""
     target_arch = normalize_arch(arch or fingerprint.get("arch")) or ""
@@ -108,10 +109,20 @@ def match_fpm_profiles(fingerprint: dict[str, Any],
         target_sapi = "fpm"
     rows = []
     for profile in list_fpm_profiles():
+        # A local-only profile is tied to one exact build (for example a Nix
+        # store PHP binary or a non-upstream image).  It must be selected
+        # explicitly with --profile, never by version alone.
+        if profile.get("local_only"):
+            continue
         ok, problems = requirements(profile)
         score = 0
         compatible = ok
         warnings = list(problems)
+        if profile.get("build_specific"):
+            compatible = False
+            warnings.append(
+                "build-specific profile; force with --profile only after "
+                "matching the exact image/build")
         if target_php:
             if target_php == profile.get("php_version"):
                 score += 100

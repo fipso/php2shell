@@ -388,6 +388,14 @@
         }
       },
       "additionalProperties": false
+    },
+    "build_specific": {
+      "type": "boolean",
+      "description": "Profile tied to an exact image/build; automatic dispatch must not trust version alone."
+    },
+    "local_only": {
+      "type": "boolean",
+      "description": "Profile only valid for a local lab build; force with --profile."
     }
   },
   "additionalProperties": false

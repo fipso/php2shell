@@ -126,5 +126,6 @@
       "unserialize_data": 856,
       "unserialize_level": 864
     }
-  }
+  },
+  "build_specific": true
 }

