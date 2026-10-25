@@ -1,0 +1,16 @@
+services:
+  app:
+    image: php:8.4.26-apache
+    container_name: php2shell-prod
+    ports:
+      - "1337:80"
+    volumes:
+      - ./app:/var/www/html:ro
+      - ./out:/out
+    command:
+      - /bin/sh
+      - -c
+      - |
+        cp /usr/local/etc/php/php.ini-production /usr/local/etc/php/php.ini
+        chown -R www-data:www-data /out
+        exec apache2-foreground
