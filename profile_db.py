@@ -38,7 +38,10 @@ HEX_FIELDS = ("zif_system", "zval_ptr_dtor", "htdata")
 def normalize_arch(arch: str | None) -> str | None:
     if not arch:
         return None
-    return ARCH_ALIASES.get(str(arch).lower(), str(arch).lower())
+    text = str(arch).lower()
+    if text in ("", "auto", "unknown"):
+        return None
+    return ARCH_ALIASES.get(text, text)
 
 
 def _int(value: Any) -> int | None:
@@ -365,6 +368,71 @@ def match_profiles(fingerprint: dict[str, Any],
     ranked.sort(key=lambda x: (x["compatible"], x["score"], x["rce"],
                                x["verified"], x["php_version"]), reverse=True)
     return ranked[:limit]
+
+
+def priority_candidates(fingerprint: dict[str, Any],
+                        arch: str | None = None,
+                        limit: int | None = None) -> list[dict[str, Any]]:
+    """Order runnable profiles when exact build/arch facts are incomplete.
+
+    The order is deliberately conservative:
+
+      1. exact PHP version, matching architecture when known
+      2. exact PHP version, other architecture only when arch is unknown
+      3. same PHP branch
+      4. other verified RCE builds
+
+    Unknown architecture prefers x86_64, the common lab/server case.  Patched
+    versions, non-Apache SAPI hints, a negative upload-progress probe and known
+    multi-worker targets are excluded.  Callers may still force a profile.
+    """
+    fp = dict(fingerprint)
+    target_php = fp.get("php_version")
+    target_arch = normalize_arch(arch or fp.get("arch"))
+    target_distro = (fp.get("distro") or "").lower()
+    sapi_hint = (fp.get("sapi_hint") or "").lower()
+    if sapi_hint in ("nginx", "litespeed", "iis"):
+        return []
+    if fp.get("session_upload_progress") is False:
+        return []
+    workers = fp.get("workers")
+    if workers is not None and int(workers) != 1:
+        return []
+
+    matches = match_profiles(fp, arch=target_arch, require_rce=True,
+                             limit=1000)
+    candidates: list[dict[str, Any]] = []
+    for m in matches:
+        if not m.get("rce"):
+            continue
+        if not profile_requirements_ok(m)[0]:
+            continue
+        if target_arch and m.get("arch") != target_arch:
+            continue
+        fixed = _fixed_version(m)
+        if target_php and fixed and _version_tuple(target_php) >= _version_tuple(fixed):
+            continue
+        candidates.append(m)
+
+    def key(m: dict[str, Any]):
+        exact = 0 if target_php and m.get("php_version") == target_php else 1
+        same_branch = 0 if (target_php and
+                             _version_tuple(target_php)[:2] ==
+                             _version_tuple(m.get("php_version"))[:2]) else 1
+        if target_arch:
+            arch_rank = 0 if m.get("arch") == target_arch else 1
+        else:
+            arch_rank = 0 if m.get("arch") == "x86_64" else 1
+        distro_rank = 0 if (target_distro and
+                            m.get("distro") == target_distro) else 1
+        version_desc = tuple(-x for x in _version_tuple(m.get("php_version")))
+        return (exact, same_branch, arch_rank, distro_rank,
+                0 if m.get("compatible") else 1,
+                version_desc, 0 if m.get("verified") else 1,
+                0 if m.get("rce") else 1)
+
+    candidates.sort(key=key)
+    return candidates[:limit] if limit is not None else candidates
 
 
 def format_profile_table(profiles: Iterable[dict[str, Any]]) -> str:

