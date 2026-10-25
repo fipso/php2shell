@@ -296,6 +296,22 @@ present but have not been verified on real ARM hardware. Concurrent-load
 behavior is still under test; the current pinning assumes requests are not
 competing for the final free worker.
 
+HTTPS is supported for both the exploit and the worker-holder connections:
+
+```bash
+python3 production_exploit.py \
+    --host target.example --port 443 --https \
+    --servername target.example --workers 150 \
+    --host-proof /path/to/out/p1
+```
+
+Certificates are verified by default. Use `--insecure` only for a disposable
+lab with a self-signed certificate; `--servername` sets SNI/verification name
+when `--host` is an IP, and `--host-header` overrides the HTTP `Host` header.
+TLS must reach Apache/mod_php directly or through a non-buffering TCP/TLS
+proxy. A reverse proxy that converts chunked bodies to `Content-Length` can
+break the A1/B1 stages.
+
 ### Supported production 8.4.x builds (x86-64)
 
 The production chain was tested against official Apache images with the stock
