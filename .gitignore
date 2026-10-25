@@ -28,3 +28,7 @@ lab/fpm/runtime/
 lab/fpm/webroot/out/
 lab/*.pid
 lab/fpm/*.pid
+
+# Default-config pure-chain upstream checkout and proofs
+vendor/
+out/

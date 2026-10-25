@@ -244,14 +244,66 @@ prefork MPM pinned to one worker, `display_errors=On`, and a mounted lab INI.
 | `php:8.4.26-fpm` + `nginx:1.30-alpine` | chain 8M, builder 64M | automatic FPM dispatch refused: no trusted image-specific profile; a direct attempt with the upstream profile did not produce proof |
 | `php:8.5.11-fpm` + `nginx:1.30-alpine` | chain 8M, builder 64M | automatic FPM dispatch refused: no trusted 8.5.11 FPM profile |
 | `nginx:1.30-alpine` reverse proxy to `php:8.5.11-apache` | body reports `apache2handler` | correctly identified Apache, but the proxy path returned 502 during the pre-RINIT leak; direct Apache succeeded |
+| `php:8.4.26-apache` | **stock** `php.ini-production`, 150 workers, 128M/8M, display off | **RCE** via `default_config.py` / 9bie pure chain, `uid=33(www-data)` |
 
-The stock `php:*-apache` image defaults are `memory_limit=128M`,
-`post_max_size=8M`, `upload_max_filesize=2M`, `MaxRequestWorkers=150` and
-`display_errors=STDOUT`. Those defaults are outside the verified profile, so
-they need the lab INI and a one-worker MPM before the pre-RINIT chain is tested.
-The 8.5.11 128M profile is `profiles/php-8.5.11-128m.json`.
+The stock `php:*-apache` defaults are `memory_limit=128M`, `post_max_size=8M`,
+`upload_max_filesize=2M`, `MaxRequestWorkers=150` and `display_errors=STDOUT`.
+The older 8M session profile needs a lab INI and one worker. The separate
+stock-config chain below has been verified on the untouched 8.4.26 image with
+150 workers and `php.ini-production`. The 8.5.11 128M profile is
+`profiles/php-8.5.11-128m.json`.
 
 FPM/CLI profiles are marked `build_specific`. `fingerprint.py` will show them
 but will not auto-run one by version alone; pass `--profile` for the exact
 image/build, or calibrate it. This prevents the upstream minimal-build 8.4
 profile from being mistaken for the official `php:8.4.26-fpm` image.
+
+## Default-config chain (stock `php:8.4.26-apache`)
+
+The earlier session-chain profiles require `display_errors=On`, a small
+`memory_limit`, and one worker. They are not a default-image exploit. The
+default-config chain is separate: it uses the public 9bie pure-HTTP research
+(stage A1 send-cookie OOM → B1 stale-id OOB leak → A2 cheap OOM → B2 fake
+HashTable), only chunked multipart and ordinary HTTP requests, and the stock
+`php.ini-production`:
+
+- `display_errors=Off`
+- `memory_limit=128M`, `post_max_size=8M`
+- official prefork MPM, `MaxRequestWorkers=150`
+- target page only `<?php echo "OK\n"; ?>`
+- no custom target INI or MPM override
+
+Verified run against the official image:
+
+```text
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
+```
+
+The chain holds 149 prefork children with incomplete POST bodies, leaving one
+worker for A1/B1/A2/B2, and bypasses `post_max_size` with
+`Transfer-Encoding: chunked`. The leak parser is adjusted locally for kernels
+that map the worker at `0x7x…` instead of `0x7f…`.
+
+### Run it
+
+The upstream research repository has no license file, so it is **not
+vendored** here. Fetch it yourself; the adapter only runs a temporary patched
+copy of that checkout:
+
+```bash
+git clone --depth 1 https://github.com/9bie/php2shell-bypass-aslr-exp \
+    vendor/php2shell-bypass-aslr-exp
+bash lab/start-pure-8426.sh
+python3 default_config.py \
+    --port 18110 --workers 150 \
+    --proof out/pure-8426/p1
+```
+
+`lab/start-pure-8426.sh` uses Docker when reachable, otherwise Podman; set
+`CONTAINER_ENGINE` or `PODMAN` if the engine is outside `PATH`. It starts
+`php:8.4.26-apache`, copies the image's own `php.ini-production`, mounts the
+trivial page and `/out`, and leaves the official 150-worker MPM untouched.
+
+This chain is calibrated for **8.4.26 only**. It is not the 8.5.11 profile,
+does not cover PHP-FPM, and is disruptive: it opens 149 partial connections
+and triggers OOM bailouts. Use it only against an isolated, authorized target.
