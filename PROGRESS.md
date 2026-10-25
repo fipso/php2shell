@@ -126,6 +126,23 @@ many hosts show startup OOMs, but very few show a stale read.
 - 8.4.27, 8.5.12, 8.3.36 and 8.2.35 are fixed and are rejected.
 - The aarch64 production offsets are present but are not verified on ARM.
 
+## Auto mode
+
+`fingerprint.py --auto --run` handles unknown architecture and worker count:
+
+- reads architecture and worker hints from headers/body when present
+- otherwise actively measures an Apache prefork pool with partial POST holders
+  and a GET probe, then binary-searches the free-worker boundary
+- falls back to workers 1, 2, and 150 if the probe fails
+- tries x86_64 before aarch64; stock-production profiles are x86_64 only,
+  session-chain profiles exist for both
+- explicit `--arch`, `--workers`, and `--production-workers` take precedence
+
+Verified:
+
+- stock `php:8.4.26-apache` at `:1337`: detected 150, production response proof
+- 8.5.11 one-worker lab at `:18147`: detected 1, session response proof
+
 ## Response-only proof
 
 Both exploit chains can prove execution without a target file:
