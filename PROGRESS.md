@@ -122,6 +122,25 @@ many hosts show startup OOMs, but very few show a stale read.
 - 8.4.27, 8.5.12, 8.3.36 and 8.2.35 are fixed and are rejected.
 - The aarch64 production offsets are present but are not verified on ARM.
 
+## Response-only proof
+
+Both exploit chains can prove execution without a target file:
+
+- `production_exploit.py --response-proof` appends a marker and
+  `seq 1 5000` so the B2 output exceeds the stock 4096-byte output buffer, then
+  parses the B2 response.
+- `session_exploit.py --response-proof` uses the 14-byte command
+  `id;seq 1 5000` and checks the stage-3 response for `uid=`.
+- `fingerprint.py --response-proof` forwards the mode to either chain.
+
+Verified against stock 8.4.26 mod_php (no `/out` file created) and the 8.5.11
+lab session profile. Response:
+
+```text
+PROOF: P2S_RCE
+UID: uid=33(www-data) gid=33(www-data) groups=33(www-data)
+```
+
 ## Automated runner
 
 `fingerprint.py` now includes the stock-production 8.4.19-8.4.26 profiles.

