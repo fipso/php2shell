@@ -131,17 +131,19 @@ many hosts show startup OOMs, but very few show a stale read.
 `fingerprint.py --auto --run` handles unknown architecture and worker count:
 
 - reads architecture and worker hints from headers/body when present
-- otherwise actively measures an Apache prefork pool with partial POST holders
-  and a GET probe, then binary-searches the free-worker boundary
-- falls back to workers 1, 2, and 150 if the probe fails
+- otherwise tries production workers 1, 2, and 150
+- `--auto-probe` optionally measures an Apache prefork pool with partial POST
+  holders and a GET probe, then binary-searches the free-worker boundary
+- a detected value between 2 and 149 is tried first with 150 as a fallback
 - tries x86_64 before aarch64; stock-production profiles are x86_64 only,
   session-chain profiles exist for both
 - explicit `--arch`, `--workers`, and `--production-workers` take precedence
 
 Verified:
 
-- stock `php:8.4.26-apache` at `:1337`: detected 150, production response proof
-- 8.5.11 one-worker lab at `:18147`: detected 1, session response proof
+- stock `php:8.4.26-apache` at `:1337`: workers 1 and 2 fail, 150 proves
+- stock target with `--auto-probe`: detected 150, production response proof
+- 8.5.11 one-worker lab at `:18147`: session response proof
 
 ## Response-only proof
 

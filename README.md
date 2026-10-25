@@ -76,23 +76,43 @@ If architecture is still unknown, it tries `x86_64` first and `aarch64` second.
 Stock-production profiles exist only for x86_64; session-chain profiles exist
 for both.
 
-If the worker count is still unknown and `--run` is active, `--auto` measures
-the Apache prefork pool by holding partial POST requests and probing with a GET
-while binary-searching the free-worker boundary. This is opt-in and disruptive
-for the duration of the probe, but it does not OOM or write files. If the probe
-fails, it falls back to worker counts 1, 2, and 150. Explicit `--arch`,
-`--workers`, or `--production-workers` values override auto detection.
+If workers are still unknown, `--auto` tries production worker counts 1, 2,
+and 150. This is fast: on a stock 150-worker target the 1- and 2-worker attempts
+fail quickly and the 150-worker attempt succeeds.
+
+Add `--auto-probe` to actively measure the Apache prefork pool instead:
+
+```bash
+python3 fingerprint.py -u http://127.0.0.1:1337/index.php \
+    --auto --auto-probe --run --response-proof
+```
+
+The probe holds partial POST requests and binary-searches the free-worker
+boundary with a GET. It is disruptive for the duration of the search, takes
+roughly 30-70 seconds on a 150-worker pool, and can undercount while Apache is
+still spawning children. A detected value between 2 and 149 is therefore tried
+first, with 150 appended as a fallback. If the probe fails, auto uses 1, 2, and
+150. For a known deployment, pass the exact `--workers` value and skip both the
+probe and the fallback attempts.
+
+Explicit `--arch`, `--workers`, or `--production-workers` values override auto
+detection.
 
 Verified:
 
 ```text
-# stock php:8.4.26-apache
-[+] auto: detected workers=150
+# stock php:8.4.26-apache, --auto
+attempt 1: workers=1 (fails)
+attempt 2: workers=2 (fails)
+attempt 3: workers=150
 PROOF: P2S_RCE
 UID: uid=33(www-data) gid=33(www-data) groups=33(www-data)
 
-# 8.5.11 one-worker session lab
-[+] auto: detected workers=1
+# stock target, --auto --auto-probe
+[+] auto: detected workers=150
+PROOF: P2S_RCE
+
+# 8.5.11 one-worker session lab, --auto
 PROOF: uid=33(www-data) gid=33(www-data) groups=33(www-data)
 ```
 

