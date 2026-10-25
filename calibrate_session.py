@@ -45,8 +45,11 @@ def chunk_base(raw: bytes) -> int:
             counts[v & ~0x1FFFFF] += 1
     if not counts:
         return 0
-    base, count = counts.most_common(1)[0]
-    return base if count >= 8 else 0
+    eligible = [(base, count) for base, count in counts.items() if count >= 8]
+    if not eligible:
+        return 0
+    top = max(count for _, count in eligible)
+    return max(base for base, count in eligible if count == top)
 
 
 def find_stage1(ex: SessionExploit) -> tuple[int, int, int]:
