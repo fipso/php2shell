@@ -332,3 +332,18 @@ Use `--version 8.4.25` (or `--dtor/--zif`) with `production_exploit.py`.
 150-worker verification was repeated on 8.4.19 and 8.4.26. 8.4.18 and earlier,
 8.5.10/8.5.11, 8.3.35 and 8.2.34 did not produce a leak with this geometry.
 8.4.27 is the first fixed 8.4 release and fails as expected.
+
+`fingerprint.py` includes these stock-production profiles. `--run --try-all`
+tries the exact production build first, then the nearest production builds,
+then the session-chain profiles:
+
+```bash
+python3 fingerprint.py \
+    -u http://127.0.0.1:1337/index.php \
+    --arch x86_64 --workers 1 \
+    --run --try-all --proof-file /path/to/out/p1
+```
+
+Use `--production-workers` to pin a different production worker count; it
+defaults to `--workers`, then to one worker. Production runs require a writable
+`/out` mount and the matching host proof path.

