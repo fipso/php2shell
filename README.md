@@ -48,3 +48,13 @@ stage1_n=841 forge=63 stage2_t=406 stage2_v=16 pads=31x6 carrier
 ```
 
 Use that only against a matching official build, or calibrate a profile for this exact `libphp-nts.so`.
+
+The official calibration probe/sweep is ported in `calibrate_session.py`:
+
+```bash
+bash lab/start-apache-session.sh
+python3 calibrate_session.py -u http://127.0.0.1:18091/index.php \
+    --proof-file /tmp/p --out profiles/php-8.5.11-local.json
+```
+
+On this minimal build it currently stops at stage 1: the `N=900`/forge-48 probe returns a normal 32-byte cookie with no `vNNNN` stale-block index. A profile for this exact binary is still required; the official 8.5.11 profile values do not transfer to it.
