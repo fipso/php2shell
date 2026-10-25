@@ -304,6 +304,17 @@ python3 default_config.py \
 `php:8.4.26-apache`, copies the image's own `php.ini-production`, mounts the
 trivial page and `/out`, and leaves the official 150-worker MPM untouched.
 
+Do not use a bare `docker run -p 1337:80 php:8.4.26-apache`: that image has no
+PHP page, no `/out`, and no active `php.ini`, so `/index.php` returns 404 and
+the chain cannot start. The launcher adds those pieces while keeping the PHP
+configuration stock. If port 1337 is occupied, remove the raw container or
+choose another port:
+
+```bash
+CONTAINER_ENGINE="sudo docker" PORT=18110 bash lab/start-pure-8426.sh
+python3 default_config.py --port 18110
+```
+
 This chain is calibrated for **8.4.26 only**. It is not the 8.5.11 profile,
 does not cover PHP-FPM, and is disruptive: it opens 149 partial connections
 and triggers OOM bailouts. Use it only against an isolated, authorized target.

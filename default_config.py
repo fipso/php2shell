@@ -33,9 +33,44 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 
 
 UPSTREAM_DEFAULT = "vendor/php2shell-bypass-aslr-exp"
+
+
+def check_target(port: int) -> bool:
+    """Reject the common failure: a raw image with no PHP endpoint."""
+    url = f"http://127.0.0.1:{port}/index.php"
+    req = urllib.request.Request(url, headers={"User-Agent": "php2shell-default/1"})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            status = resp.status
+            headers = resp.headers
+            body = resp.read(4096)
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+        headers = exc.headers
+        body = exc.read(512)
+    except OSError as exc:
+        print(f"cannot reach {url}: {exc}", file=sys.stderr)
+        return False
+    if status != 200:
+        print(f"target {url} returned HTTP {status}; no PHP endpoint is running",
+              file=sys.stderr)
+        print("start the stock target with lab/start-pure-8426.sh; a raw "
+              "`docker run php:8.4.26-apache` has no index.php, no /out, and "
+              "no php.ini-production", file=sys.stderr)
+        return False
+    php = headers.get("X-Powered-By", "")
+    if php and "8.4.26" not in php:
+        print(f"unsupported target version: X-Powered-By={php!r}; this chain "
+              "is calibrated for PHP 8.4.26 only", file=sys.stderr)
+        return False
+    print(f"[*] preflight: HTTP {status} {php or 'PHP version not advertised'}",
+          file=sys.stderr)
+    return True
 
 
 def main() -> int:
@@ -58,6 +93,9 @@ def main() -> int:
     ap.add_argument("--upstream", default=UPSTREAM_DEFAULT,
                     help="checkout of the public 9bie research repository")
     args = ap.parse_args()
+
+    if not check_target(args.port):
+        return 2
 
     upstream = os.path.abspath(os.path.expanduser(args.upstream))
     exploit = os.path.join(upstream, "exploit.py")
