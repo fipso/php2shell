@@ -12,6 +12,7 @@ Do not run this against systems you do not own or have explicit authorization to
 - `bash lab/start-apache-filter.sh` — filter-enabled build, port 18089.
 - `bash lab/start-apache-default.sh` — filter-enabled default-ish limits, port 18090.
 - `bash lab/start-apache-session.sh` — session upload-progress target, 8M, port 18091.
+- `sudo bash lab/start-php8511-docker.sh` — official PHP 8.5.11 Debian Docker target, port 18093; `--down` removes it.
 
 Filter-enabled `$_FILES` bypass:
 
